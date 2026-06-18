@@ -24,6 +24,7 @@ export class GameScene extends Phaser.Scene {
   private rainbowGraphics?: Phaser.GameObjects.Graphics;
   private passLine?: Phaser.GameObjects.Rectangle;
   private glyphs: Phaser.GameObjects.Text[] = [];
+  private uiRoot?: HTMLDivElement;
 
   constructor() {
     super('GameScene');
@@ -36,6 +37,7 @@ export class GameScene extends Phaser.Scene {
     this.drawBackground();
     this.loadStage(0);
     this.setupInput();
+    this.buildUi();
 
     installGameDevtools(
       () => {
@@ -115,6 +117,50 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private buildUi(): void {
+    this.uiRoot?.remove();
+
+    const host = document.querySelector<HTMLElement>('#game-root');
+    if (!host) return;
+
+    const uiRoot = document.createElement('div');
+    uiRoot.className = 'game-ui';
+
+    uiRoot.append(
+      this.createButton('Start', this.handleStartClick),
+      this.createButton('Undo', this.handleUndoClick),
+      this.createButton('Reset', this.handleResetClick),
+    );
+
+    host.append(uiRoot);
+    this.uiRoot = uiRoot;
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.uiRoot?.remove();
+      this.uiRoot = undefined;
+    });
+  }
+
+  private createButton(label: string, onClick: () => void): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  private readonly handleStartClick = (): void => {
+    this.startVehicle();
+  };
+
+  private readonly handleUndoClick = (): void => {
+    this.undoGlyph();
+  };
+
+  private readonly handleResetClick = (): void => {
+    this.resetStage();
+  };
+
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     const movementKey = event.key.toLowerCase();
     if (this.goalState === 'playing' && movementKey === 'a') {
@@ -179,6 +225,8 @@ export class GameScene extends Phaser.Scene {
     this.stage = STAGES[this.stageIndex];
     this.goalState = 'editing';
     this.glyphCount = 0;
+    this.activeKeys.left = false;
+    this.activeKeys.right = false;
     this.player?.destroy();
 
     const vehicle = VEHICLES[this.stage.vehicleKey];
@@ -249,6 +297,13 @@ export class GameScene extends Phaser.Scene {
     const glyph = this.glyphs.pop();
     glyph?.destroy();
     this.glyphCount = this.glyphs.length;
+  }
+
+  private resetStage(): void {
+    this.glyphs.forEach((glyph) => glyph.destroy());
+    this.glyphs = [];
+    this.glyphCount = 0;
+    this.loadStage(this.stageIndex);
   }
 
   private drawRainbow(): void {
