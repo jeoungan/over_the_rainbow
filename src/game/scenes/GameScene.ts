@@ -406,17 +406,28 @@ export class GameScene extends Phaser.Scene {
     });
     text.setOrigin(0.5, 0.5);
     this.matter.add.gameObject(text, {
-      shape: {
-        type: 'rectangle',
-        width: plan.size,
-        height: plan.size,
-      },
+      shape: this.createGlyphMatterShape(plan),
       friction: 0.82,
       restitution: 0.05,
       label: `glyph:${plan.char}`,
     });
     this.glyphs.push(text);
     this.glyphCount = this.glyphs.length;
+  }
+
+  private createGlyphMatterShape(plan: GlyphPlan): Phaser.Types.Physics.Matter.MatterSetBodyConfig {
+    const vertices = plan.parts[0].map((point) => ({
+      x: point.x,
+      y: point.y + plan.size / 2,
+    }));
+
+    return {
+      type: 'fromVerts',
+      verts: vertices,
+      flagInternal: true,
+      removeCollinear: 0.01,
+      minimumArea: 12,
+    };
   }
 
   private moveCaretBySpace(): void {

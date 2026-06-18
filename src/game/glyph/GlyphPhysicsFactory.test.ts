@@ -36,6 +36,29 @@ describe('GlyphPhysicsFactory', () => {
     ]);
   });
 
+  it('creates a sloped fallback for ramp-like letters', () => {
+    const emptyAdapter: FontOutlineAdapter = { getContours: () => [] };
+    const plan = createGlyphPlan(emptyAdapter, { char: 'A', fontKey: 'serif', size: 72, x: 100, y: 200 });
+
+    expect(plan.parts[0]).toEqual([
+      { x: -36, y: 0 },
+      { x: 0, y: -72 },
+      { x: 36, y: 0 },
+    ]);
+  });
+
+  it('creates a slanted fallback for slash letters', () => {
+    const emptyAdapter: FontOutlineAdapter = { getContours: () => [] };
+    const plan = createGlyphPlan(emptyAdapter, { char: '/', fontKey: 'serif', size: 72, x: 100, y: 200 });
+
+    expect(plan.parts[0]).toEqual([
+      { x: -25.2, y: 0 },
+      { x: -3.6, y: 0 },
+      { x: 25.2, y: -72 },
+      { x: 3.6, y: -72 },
+    ]);
+  });
+
   it('simplifies dense polygons while keeping corners', () => {
     const simplified = simplifyPolygon(
       [

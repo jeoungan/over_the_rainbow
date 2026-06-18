@@ -13,7 +13,7 @@ export interface FontOutlineAdapter {
 }
 
 export interface GlyphPlan {
-  kind: 'outline' | 'fallback-box';
+  kind: 'outline' | 'fallback-box' | 'fallback-shape';
   char: string;
   fontKey: string;
   size: number;
@@ -41,21 +41,14 @@ export function createGlyphPlan(adapter: FontOutlineAdapter, request: GlyphReque
     .filter((contour) => contour.length >= 3);
 
   if (contours.length === 0) {
-    const halfWidth = request.size / 2;
+    const fallback = createFallbackParts(request.char, request.size);
     return {
-      kind: 'fallback-box',
+      kind: fallback.kind,
       char: request.char,
       fontKey: request.fontKey,
       size: request.size,
       origin: { x: request.x, y: request.y },
-      parts: [
-        [
-          { x: -halfWidth, y: -request.size },
-          { x: halfWidth, y: -request.size },
-          { x: halfWidth, y: 0 },
-          { x: -halfWidth, y: 0 },
-        ],
-      ],
+      parts: fallback.parts,
     };
   }
 
@@ -66,5 +59,77 @@ export function createGlyphPlan(adapter: FontOutlineAdapter, request: GlyphReque
     size: request.size,
     origin: { x: request.x, y: request.y },
     parts: contours,
+  };
+}
+
+function createFallbackParts(char: string, size: number): Pick<GlyphPlan, 'kind' | 'parts'> {
+  const halfWidth = size / 2;
+  const slashOuter = size * 0.35;
+  const slashInner = size * 0.05;
+
+  if (char === 'A' || char === '^') {
+    return {
+      kind: 'fallback-shape',
+      parts: [
+        [
+          { x: -halfWidth, y: 0 },
+          { x: 0, y: -size },
+          { x: halfWidth, y: 0 },
+        ],
+      ],
+    };
+  }
+
+  if (char === 'V' || char === 'v') {
+    return {
+      kind: 'fallback-shape',
+      parts: [
+        [
+          { x: -halfWidth, y: -size },
+          { x: halfWidth, y: -size },
+          { x: 0, y: 0 },
+        ],
+      ],
+    };
+  }
+
+  if (char === '/') {
+    return {
+      kind: 'fallback-shape',
+      parts: [
+        [
+          { x: -slashOuter, y: 0 },
+          { x: -slashInner, y: 0 },
+          { x: slashOuter, y: -size },
+          { x: slashInner, y: -size },
+        ],
+      ],
+    };
+  }
+
+  if (char === '\\') {
+    return {
+      kind: 'fallback-shape',
+      parts: [
+        [
+          { x: slashInner, y: 0 },
+          { x: slashOuter, y: 0 },
+          { x: -slashInner, y: -size },
+          { x: -slashOuter, y: -size },
+        ],
+      ],
+    };
+  }
+
+  return {
+    kind: 'fallback-box',
+    parts: [
+      [
+        { x: -halfWidth, y: -size },
+        { x: halfWidth, y: -size },
+        { x: halfWidth, y: 0 },
+        { x: -halfWidth, y: 0 },
+      ],
+    ],
   };
 }
