@@ -51,6 +51,19 @@ test('supports visible Start, Undo, and Reset controls', async ({ page }) => {
   expect(state.glyphCount).toBe(0);
 });
 
+test('moves to stage 2 with the small car', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(360, 360);
+  await page.keyboard.press('R');
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.stageId).toBe('stage-2');
+  expect(state.vehicleType).toBe('smallCar');
+  expect(state.goalState).toBe('editing');
+  expect(state.glyphCount).toBe(0);
+});
+
 test('gameplay screenshot is nonblank after glyph creation', async ({ page }) => {
   await page.goto('/');
   await page.mouse.click(420, 340);

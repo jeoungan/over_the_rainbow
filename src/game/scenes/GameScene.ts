@@ -135,6 +135,8 @@ export class GameScene extends Phaser.Scene {
       this.createButton('Start', this.handleStartClick),
       this.createButton('Undo', this.handleUndoClick),
       this.createButton('Reset', this.handleResetClick),
+      this.createButton('Prev', this.handlePreviousStageClick),
+      this.createButton('Next', this.handleNextStageClick),
     );
 
     host.append(uiRoot);
@@ -164,6 +166,14 @@ export class GameScene extends Phaser.Scene {
 
   private readonly handleResetClick = (): void => {
     this.resetStage();
+  };
+
+  private readonly handlePreviousStageClick = (): void => {
+    this.changeStage(-1);
+  };
+
+  private readonly handleNextStageClick = (): void => {
+    this.changeStage(1);
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -310,6 +320,7 @@ export class GameScene extends Phaser.Scene {
     this.previousPlayerPosition = { x: this.stage.spawn.x, y: this.stage.spawn.y };
 
     this.drawRainbow();
+    this.drawHud();
   }
 
   private getVehicleDisplaySize(vehicleKey: VehicleKey): { width: number; height: number } {
@@ -376,10 +387,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resetStage(): void {
+    this.clearGlyphs();
+    this.loadStage(this.stageIndex);
+  }
+
+  private changeStage(direction: -1 | 1): void {
+    const nextIndex = (this.stageIndex + direction + STAGES.length) % STAGES.length;
+    this.clearGlyphs();
+    this.loadStage(nextIndex);
+  }
+
+  private clearGlyphs(): void {
     this.glyphs.forEach((glyph) => glyph.destroy());
     this.glyphs = [];
     this.glyphCount = 0;
-    this.loadStage(this.stageIndex);
   }
 
   private drawHud(): void {
