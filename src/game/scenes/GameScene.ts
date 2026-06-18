@@ -1,8 +1,13 @@
 import Phaser from 'phaser';
 import { createCaretController } from '../caret/CaretController';
 import { installGameDevtools } from '../devtools';
+import { createGlyphPlan } from '../glyph/GlyphPhysicsFactory';
+import type { GlyphPlan } from '../glyph/GlyphPhysicsFactory';
+import { didPassOverRainbow } from '../goal/GoalDetector';
+import { createTextInputController } from '../input/TextInputController';
 import { STAGES, VEHICLES } from '../stages';
 import type { StageDefinition } from '../types';
+import { getVehicleDrive } from '../vehicle/VehicleController';
 
 const WORLD = { width: 1280, height: 720 };
 
@@ -10,11 +15,15 @@ export class GameScene extends Phaser.Scene {
   private stageIndex = 0;
   private stage: StageDefinition = STAGES[0];
   private readonly caret = createCaretController(WORLD);
+  private readonly inputController = createTextInputController();
+  private readonly activeKeys = { left: false, right: false };
+  private previousPlayerPosition = { x: 0, y: 0 };
   private glyphCount = 0;
   private goalState: 'editing' | 'playing' | 'won' | 'failed' = 'editing';
   private player?: Phaser.Physics.Matter.Image;
   private rainbowGraphics?: Phaser.GameObjects.Graphics;
   private passLine?: Phaser.GameObjects.Rectangle;
+  private glyphs: Phaser.GameObjects.Text[] = [];
 
   constructor() {
     super('GameScene');
@@ -26,6 +35,7 @@ export class GameScene extends Phaser.Scene {
     this.ensureGeneratedTextures();
     this.drawBackground();
     this.loadStage(0);
+    this.setupInput();
 
     installGameDevtools(
       () => {
@@ -48,11 +58,104 @@ export class GameScene extends Phaser.Scene {
       (ms) => {
         const steps = Math.max(1, Math.round(ms / (1000 / 60)));
         for (let i = 0; i < steps; i += 1) {
+          this.update();
           this.matter.world.step(1000 / 60);
         }
       },
     );
   }
+
+  update(): void {
+    if (!this.player) return;
+
+    const previous = { ...this.previousPlayerPosition };
+    this.previousPlayerPosition = { x: this.player.x, y: this.player.y };
+
+    if (this.goalState === 'playing') {
+      const vehicle = VEHICLES[this.stage.vehicleKey];
+      const direction = this.activeKeys.right ? 'right' : this.activeKeys.left ? 'left' : 'none';
+      const drive = getVehicleDrive(vehicle, direction, 0);
+      const body = this.player.body as MatterJS.BodyType;
+
+      this.player.applyForce(new Phaser.Math.Vector2(drive.forceX, 0));
+      this.player.setAngularVelocity(body.angularVelocity * (1 - drive.angularDamping));
+
+      if (Math.abs(body.velocity.x) > drive.maxSpeed) {
+        this.player.setVelocityX(Math.sign(body.velocity.x) * drive.maxSpeed);
+      }
+    }
+
+    if (
+      this.goalState === 'playing' &&
+      didPassOverRainbow(previous, { x: this.player.x, y: this.player.y }, this.stage.rainbow)
+    ) {
+      this.goalState = 'won';
+    }
+  }
+
+  private setupInput(): void {
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      this.caret.placeAt({ x: pointer.worldX, y: pointer.worldY });
+    });
+
+    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: unknown[], _dx: number, dy: number) => {
+      this.caret.changeSizeFromWheel(dy);
+    });
+
+    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keyup', this.handleKeyUp);
+    window.addEventListener('compositionstart', this.handleCompositionStart);
+    window.addEventListener('compositionend', this.handleCompositionEnd);
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener('keydown', this.handleKeyDown);
+      window.removeEventListener('keyup', this.handleKeyUp);
+      window.removeEventListener('compositionstart', this.handleCompositionStart);
+      window.removeEventListener('compositionend', this.handleCompositionEnd);
+    });
+  }
+
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    const movementKey = event.key.toLowerCase();
+    if (this.goalState === 'playing' && movementKey === 'a') {
+      this.activeKeys.left = true;
+      event.preventDefault();
+      return;
+    }
+    if (this.goalState === 'playing' && movementKey === 'd') {
+      this.activeKeys.right = true;
+      event.preventDefault();
+      return;
+    }
+
+    const intent = this.inputController.keyDown({
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      repeat: event.repeat,
+    });
+
+    if (intent.type !== 'none') event.preventDefault();
+    if (intent.type === 'glyph') this.createGlyph(intent.value);
+    if (intent.type === 'space') this.moveCaretBySpace();
+    if (intent.type === 'undo') this.undoGlyph();
+    if (intent.type === 'start') this.startVehicle();
+  };
+
+  private readonly handleKeyUp = (event: KeyboardEvent): void => {
+    const key = event.key.toLowerCase();
+    if (key === 'a') this.activeKeys.left = false;
+    if (key === 'd') this.activeKeys.right = false;
+  };
+
+  private readonly handleCompositionStart = (): void => {
+    this.inputController.compositionStart();
+  };
+
+  private readonly handleCompositionEnd = (event: CompositionEvent): void => {
+    const intent = this.inputController.compositionEnd(event.data);
+    if (intent.type === 'glyph') this.createGlyph(intent.value);
+  };
 
   private ensureGeneratedTextures(): void {
     if (this.textures.exists('vehicle-rect')) return;
@@ -87,8 +190,65 @@ export class GameScene extends Phaser.Scene {
     });
     this.player.setDisplaySize(72, 34);
     this.player.setTint(0x334c7d);
+    this.previousPlayerPosition = { x: this.stage.spawn.x, y: this.stage.spawn.y };
 
     this.drawRainbow();
+  }
+
+  private createGlyph(char: string): void {
+    const caret = this.caret.snapshot();
+    const plan = createGlyphPlan(
+      { getContours: () => [] },
+      {
+        char,
+        fontKey: 'system-serif',
+        size: caret.glyphSize,
+        x: caret.position.x,
+        y: caret.position.y,
+      },
+    );
+
+    this.spawnGlyphFromPlan(plan);
+  }
+
+  private spawnGlyphFromPlan(plan: GlyphPlan): void {
+    const text = this.add.text(plan.origin.x, plan.origin.y - plan.size / 2, plan.char, {
+      fontFamily: 'Georgia, serif',
+      fontSize: `${plan.size}px`,
+      color: '#29395f',
+      stroke: '#ffffff',
+      strokeThickness: 4,
+    });
+    text.setOrigin(0.5, 0.5);
+    this.matter.add.gameObject(text, {
+      shape: {
+        type: 'rectangle',
+        width: plan.size,
+        height: plan.size,
+      },
+      friction: 0.82,
+      restitution: 0.05,
+      label: `glyph:${plan.char}`,
+    });
+    this.glyphs.push(text);
+    this.glyphCount = this.glyphs.length;
+  }
+
+  private moveCaretBySpace(): void {
+    const caret = this.caret.snapshot();
+    this.caret.placeAt({ x: caret.position.x + caret.glyphSize, y: caret.position.y });
+  }
+
+  private startVehicle(): void {
+    if (this.goalState === 'editing') {
+      this.goalState = 'playing';
+    }
+  }
+
+  private undoGlyph(): void {
+    const glyph = this.glyphs.pop();
+    glyph?.destroy();
+    this.glyphCount = this.glyphs.length;
   }
 
   private drawRainbow(): void {

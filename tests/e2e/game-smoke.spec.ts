@@ -11,3 +11,21 @@ test('renders the game canvas and exposes text state', async ({ page }) => {
   expect(state.vehicleType).toBe('walking');
   expect(state.goalState).toBe('editing');
 });
+
+test('creates a glyph, starts the vehicle, and moves right', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(360, 360);
+  await page.keyboard.press('A');
+
+  let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.glyphCount).toBe(1);
+
+  await page.keyboard.press('Control+R');
+  await page.keyboard.down('d');
+  await page.evaluate(() => window.advanceTime(600));
+  await page.keyboard.up('d');
+
+  state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.goalState).toBe('playing');
+  expect(state.player.x).toBeGreaterThan(130);
+});
