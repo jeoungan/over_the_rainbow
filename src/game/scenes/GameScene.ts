@@ -27,6 +27,8 @@ export class GameScene extends Phaser.Scene {
   private uiRoot?: HTMLDivElement;
   private caretGraphic?: Phaser.GameObjects.Rectangle;
   private stageLabel?: Phaser.GameObjects.Text;
+  private groundGraphics?: Phaser.GameObjects.Graphics;
+  private groundBodies: MatterJS.BodyType[] = [];
 
   constructor() {
     super('GameScene');
@@ -294,9 +296,6 @@ export class GameScene extends Phaser.Scene {
     this.add.ellipse(360, 190, 210, 64, 0xffffff, 0.38);
     this.add.ellipse(870, 120, 360, 90, 0xffffff, 0.45);
     this.add.ellipse(980, 145, 260, 70, 0xffffff, 0.34);
-    this.add.rectangle(WORLD.width / 2, 660, WORLD.width, 120, 0x8fc89d);
-    this.add.rectangle(WORLD.width / 2, 628, WORLD.width, 24, 0xfff4c7, 0.35);
-    this.matter.add.rectangle(WORLD.width / 2, 660, WORLD.width, 60, { isStatic: true, label: 'ground' });
   }
 
   private loadStage(index: number): void {
@@ -307,6 +306,7 @@ export class GameScene extends Phaser.Scene {
     this.activeKeys.left = false;
     this.activeKeys.right = false;
     this.player?.destroy();
+    this.drawStageTerrain();
 
     const vehicle = VEHICLES[this.stage.vehicleKey];
     this.player = this.matter.add.image(this.stage.spawn.x, this.stage.spawn.y, `vehicle-${vehicle.key}`, undefined, {
@@ -328,6 +328,56 @@ export class GameScene extends Phaser.Scene {
     if (vehicleKey === 'bicycle') return { width: 76, height: 42 };
     if (vehicleKey === 'smallCar') return { width: 76, height: 38 };
     return { width: 88, height: 34 };
+  }
+
+  private drawStageTerrain(): void {
+    this.groundGraphics?.destroy();
+    this.groundBodies.forEach((body) => this.matter.world.remove(body));
+    this.groundBodies = [];
+
+    const graphics = this.add.graphics();
+    const isCanyon = this.stage.id === 'stage-4';
+    const groundColor = isCanyon ? 0xb9c98f : 0x8fc89d;
+    const topColor = isCanyon ? 0xffe0a6 : 0xfff4c7;
+
+    if (isCanyon) {
+      this.drawCanyonGaps(graphics);
+    }
+
+    for (const segment of this.stage.groundSegments) {
+      const left = segment.x - segment.width / 2;
+      graphics.fillStyle(groundColor, 1);
+      graphics.fillRect(left, 600, segment.width, 120);
+      graphics.fillStyle(topColor, 0.45);
+      graphics.fillRect(left, 600, segment.width, 24);
+
+      const body = this.matter.add.rectangle(segment.x, segment.y, segment.width, segment.height, {
+        isStatic: true,
+        label: `ground:${this.stage.id}`,
+      }) as MatterJS.BodyType;
+      this.groundBodies.push(body);
+    }
+
+    this.groundGraphics = graphics;
+  }
+
+  private drawCanyonGaps(graphics: Phaser.GameObjects.Graphics): void {
+    const sortedSegments = [...this.stage.groundSegments].sort((a, b) => a.x - b.x);
+    for (let index = 0; index < sortedSegments.length - 1; index += 1) {
+      const leftSegment = sortedSegments[index];
+      const rightSegment = sortedSegments[index + 1];
+      const gapLeft = leftSegment.x + leftSegment.width / 2;
+      const gapRight = rightSegment.x - rightSegment.width / 2;
+      const gapWidth = gapRight - gapLeft;
+
+      if (gapWidth <= 0) continue;
+
+      graphics.fillStyle(0x5f6d83, 0.34);
+      graphics.fillRect(gapLeft, 600, gapWidth, 120);
+      graphics.fillStyle(0x39445f, 0.22);
+      graphics.fillTriangle(gapLeft, 600, gapLeft + gapWidth * 0.42, 720, gapLeft, 720);
+      graphics.fillTriangle(gapRight, 600, gapRight, 720, gapLeft + gapWidth * 0.58, 720);
+    }
   }
 
   private createGlyph(char: string): void {

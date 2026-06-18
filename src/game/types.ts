@@ -24,6 +24,13 @@ export interface RainbowTarget {
   passTopY: number;
 }
 
+export interface GroundSegment {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface StageDefinition {
   id: StageId;
   title: string;
@@ -31,5 +38,6 @@ export interface StageDefinition {
   vehicleKey: VehicleKey;
   spawn: Point;
   rainbow: RainbowTarget;
+  groundSegments: GroundSegment[];
   allowLiveTyping: boolean;
 }

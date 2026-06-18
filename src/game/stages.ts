@@ -1,4 +1,8 @@
-import type { StageDefinition, VehicleKey, VehicleTuning } from './types';
+import type { GroundSegment, StageDefinition, VehicleKey, VehicleTuning } from './types';
+
+function fullGround(): GroundSegment[] {
+  return [{ x: 640, y: 660, width: 1280, height: 60 }];
+}
 
 export const VEHICLES: Record<VehicleKey, VehicleTuning> = {
   walking: {
@@ -47,6 +51,7 @@ export const STAGES: StageDefinition[] = [
     vehicleKey: 'racingCar',
     spawn: { x: 130, y: 610 },
     rainbow: { centerX: 610, centerY: 340, width: 180, height: 120, passTopY: 300 },
+    groundSegments: fullGround(),
     allowLiveTyping: true,
   },
   {
@@ -56,6 +61,7 @@ export const STAGES: StageDefinition[] = [
     vehicleKey: 'smallCar',
     spawn: { x: 130, y: 610 },
     rainbow: { centerX: 650, centerY: 350, width: 190, height: 120, passTopY: 310 },
+    groundSegments: fullGround(),
     allowLiveTyping: true,
   },
   {
@@ -65,6 +71,20 @@ export const STAGES: StageDefinition[] = [
     vehicleKey: 'bicycle',
     spawn: { x: 130, y: 610 },
     rainbow: { centerX: 590, centerY: 350, width: 190, height: 120, passTopY: 310 },
+    groundSegments: fullGround(),
+    allowLiveTyping: true,
+  },
+  {
+    id: 'stage-4',
+    title: 'Stage 4',
+    hint: 'Bridge the canyon before climbing toward a higher rainbow.',
+    vehicleKey: 'smallCar',
+    spawn: { x: 130, y: 610 },
+    rainbow: { centerX: 930, centerY: 285, width: 220, height: 150, passTopY: 230 },
+    groundSegments: [
+      { x: 210, y: 660, width: 420, height: 60 },
+      { x: 960, y: 660, width: 640, height: 60 },
+    ],
     allowLiveTyping: true,
   },
 ];

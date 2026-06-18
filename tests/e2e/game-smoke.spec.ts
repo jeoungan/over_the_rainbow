@@ -75,6 +75,21 @@ test('moves to stage 3 with the bicycle', async ({ page }) => {
   expect(state.goalState).toBe('editing');
 });
 
+test('moves to stage 4 with a canyon challenge', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.stageId).toBe('stage-4');
+  expect(state.vehicleType).toBe('smallCar');
+  expect(state.goalState).toBe('editing');
+
+  const screenshot = await page.screenshot({ path: 'test-results/stage-4-canyon.png' });
+  expect(screenshot.length).toBeGreaterThan(20_000);
+});
+
 test('gameplay screenshot is nonblank after glyph creation', async ({ page }) => {
   await page.goto('/');
   await page.mouse.click(420, 340);
