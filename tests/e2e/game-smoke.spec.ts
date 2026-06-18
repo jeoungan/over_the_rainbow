@@ -7,8 +7,8 @@ test('renders the game canvas and exposes text state', async ({ page }) => {
 
   const textState = await page.evaluate(() => window.render_game_to_text());
   const state = JSON.parse(textState);
-  expect(state.stageId).toBe('tutorial');
-  expect(state.vehicleType).toBe('walking');
+  expect(state.stageId).toBe('stage-1');
+  expect(state.vehicleType).toBe('racingCar');
   expect(state.goalState).toBe('editing');
 });
 

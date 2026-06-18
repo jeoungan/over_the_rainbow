@@ -16,16 +16,18 @@ describe('stage and vehicle data', () => {
 
   it('uses the approved first stage sequence', () => {
     expect(STAGES.map((stage) => [stage.id, stage.vehicleKey])).toEqual([
-      ['tutorial', 'walking'],
       ['stage-1', 'racingCar'],
       ['stage-2', 'smallCar'],
       ['stage-3', 'bicycle'],
     ]);
   });
 
+  it('labels the playable stages by stage number', () => {
+    expect(STAGES.map((stage) => stage.title)).toEqual(['Stage 1', 'Stage 2', 'Stage 3']);
+  });
+
   it('keeps the first three challenges low and close', () => {
-    const playableStages = STAGES.slice(1);
-    for (const stage of playableStages) {
+    for (const stage of STAGES) {
       expect(stage.rainbow.centerY).toBeGreaterThanOrEqual(250);
       expect(stage.rainbow.centerX - stage.spawn.x).toBeLessThanOrEqual(680);
     }

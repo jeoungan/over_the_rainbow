@@ -1,4 +1,5 @@
 export type VehicleKey = 'walking' | 'bicycle' | 'smallCar' | 'racingCar';
+export type StageId = `stage-${number}`;
 
 export interface VehicleTuning {
   key: VehicleKey;
@@ -24,7 +25,7 @@ export interface RainbowTarget {
 }
 
 export interface StageDefinition {
-  id: 'tutorial' | 'stage-1' | 'stage-2' | 'stage-3';
+  id: StageId;
   title: string;
   hint: string;
   vehicleKey: VehicleKey;

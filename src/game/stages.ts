@@ -41,17 +41,8 @@ export const VEHICLES: Record<VehicleKey, VehicleTuning> = {
 
 export const STAGES: StageDefinition[] = [
   {
-    id: 'tutorial',
-    title: 'First letters',
-    hint: 'Place a gentle support and walk over the rainbow.',
-    vehicleKey: 'walking',
-    spawn: { x: 130, y: 610 },
-    rainbow: { centerX: 520, centerY: 360, width: 180, height: 120, passTopY: 318 },
-    allowLiveTyping: false,
-  },
-  {
     id: 'stage-1',
-    title: 'Fast little dream',
+    title: 'Stage 1',
     hint: 'A racing car can climb a short steep word, but it flips easily.',
     vehicleKey: 'racingCar',
     spawn: { x: 130, y: 610 },
@@ -60,7 +51,7 @@ export const STAGES: StageDefinition[] = [
   },
   {
     id: 'stage-2',
-    title: 'Ordinary engine',
+    title: 'Stage 2',
     hint: 'Balance force and stability with a smoother glyph ramp.',
     vehicleKey: 'smallCar',
     spawn: { x: 130, y: 610 },
@@ -69,7 +60,7 @@ export const STAGES: StageDefinition[] = [
   },
   {
     id: 'stage-3',
-    title: 'Quiet bicycle',
+    title: 'Stage 3',
     hint: 'The bicycle needs a careful gentle path over a close rainbow.',
     vehicleKey: 'bicycle',
     spawn: { x: 130, y: 610 },
