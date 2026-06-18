@@ -8,6 +8,7 @@ import { createTextInputController } from '../input/TextInputController';
 import { STAGES, VEHICLES } from '../stages';
 import type { StageDefinition, VehicleKey } from '../types';
 import { getVehicleDrive } from '../vehicle/VehicleController';
+import { estimateSlopeDegrees } from '../vehicle/SlopeEstimator';
 
 const WORLD = { width: 1280, height: 720 };
 const DRIVE_FORCE_SCALE = 0.2;
@@ -84,7 +85,7 @@ export class GameScene extends Phaser.Scene {
     if (this.goalState === 'playing') {
       const vehicle = VEHICLES[this.stage.vehicleKey];
       const direction = this.activeKeys.right ? 'right' : this.activeKeys.left ? 'left' : 'none';
-      const drive = getVehicleDrive(vehicle, direction, 0);
+      const drive = getVehicleDrive(vehicle, direction, estimateSlopeDegrees(this.player.rotation));
       const body = this.player.body as MatterJS.BodyType;
 
       this.player.applyForce(new Phaser.Math.Vector2(drive.forceX * DRIVE_FORCE_SCALE, 0));
