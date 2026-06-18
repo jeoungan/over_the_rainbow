@@ -26,11 +26,24 @@ describe('stage and vehicle data', () => {
     expect(STAGES.map((stage) => stage.title)).toEqual(['Stage 1', 'Stage 2', 'Stage 3']);
   });
 
+  it('allows text summoning after movement in every stage', () => {
+    expect(STAGES.every((stage) => stage.allowLiveTyping)).toBe(true);
+  });
+
   it('keeps the first three challenges low and close', () => {
     for (const stage of STAGES) {
       expect(stage.rainbow.centerY).toBeGreaterThanOrEqual(250);
       expect(stage.rainbow.centerX - stage.spawn.x).toBeLessThanOrEqual(680);
     }
+  });
+
+  it('makes the bicycle stage the closest low rainbow challenge', () => {
+    const stage2 = getStage('stage-2');
+    const stage3 = getStage('stage-3');
+
+    expect(stage3.vehicleKey).toBe('bicycle');
+    expect(stage3.rainbow.centerX - stage3.spawn.x).toBeLessThan(stage2.rainbow.centerX - stage2.spawn.x);
+    expect(stage3.rainbow.centerY).toBeGreaterThanOrEqual(250);
   });
 
   it('retrieves a stage by id', () => {

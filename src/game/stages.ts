@@ -47,7 +47,7 @@ export const STAGES: StageDefinition[] = [
     vehicleKey: 'racingCar',
     spawn: { x: 130, y: 610 },
     rainbow: { centerX: 610, centerY: 340, width: 180, height: 120, passTopY: 300 },
-    allowLiveTyping: false,
+    allowLiveTyping: true,
   },
   {
     id: 'stage-2',
