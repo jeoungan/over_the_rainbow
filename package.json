@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "node scripts/vite-dev.mjs",
     "build": "tsc --noEmit && node scripts/vite-build.mjs",
-    "test": "vitest run \"src/**/*.test.ts\" --environment node --globals",
-    "test:watch": "vitest \"src/**/*.test.ts\" --environment node --globals",
+    "test": "vitest run --environment node --globals",
+    "test:watch": "vitest --environment node --globals",
     "e2e": "playwright test",
     "verify": "npm run test && npm run build && npm run e2e"
   },
