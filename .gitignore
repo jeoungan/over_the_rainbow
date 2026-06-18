@@ -5,4 +5,5 @@ dist/
 coverage/
 test-results/
 debug.log
+dev-server*.log
 .env

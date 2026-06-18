@@ -15,6 +15,10 @@ describe('GoalDetector', () => {
     expect(didPassOverRainbow({ x: 480, y: 290 }, { x: 705, y: 285 }, rainbow)).toBe(true);
   });
 
+  it('succeeds when crossing the right edge incrementally above the rainbow', () => {
+    expect(didPassOverRainbow({ x: 688, y: 285 }, { x: 696, y: 285 }, rainbow)).toBe(true);
+  });
+
   it('does not succeed when the vehicle merely touches the rainbow side', () => {
     expect(didPassOverRainbow({ x: 480, y: 340 }, { x: 705, y: 340 }, rainbow)).toBe(false);
   });

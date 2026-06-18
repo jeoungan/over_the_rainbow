@@ -55,6 +55,7 @@ describe('stage and vehicle data', () => {
     expect(stage4.rainbow.centerX - stage4.spawn.x).toBeGreaterThan(680);
     expect(stage4.groundSegments).toHaveLength(2);
     expect(rightGround.x - rightGround.width / 2).toBeGreaterThan(leftGround.x + leftGround.width / 2);
+    expect(rightGround.x - rightGround.width / 2 - (leftGround.x + leftGround.width / 2)).toBeGreaterThanOrEqual(320);
   });
 
   it('retrieves a stage by id', () => {

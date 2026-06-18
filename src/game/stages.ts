@@ -83,7 +83,7 @@ export const STAGES: StageDefinition[] = [
     rainbow: { centerX: 930, centerY: 285, width: 220, height: 150, passTopY: 230 },
     groundSegments: [
       { x: 210, y: 660, width: 420, height: 60 },
-      { x: 960, y: 660, width: 640, height: 60 },
+      { x: 1040, y: 660, width: 480, height: 60 },
     ],
     allowLiveTyping: true,
   },

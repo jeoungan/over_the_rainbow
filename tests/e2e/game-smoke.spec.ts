@@ -30,6 +30,39 @@ test('creates a glyph, starts the vehicle, and moves right', async ({ page }) =>
   expect(state.player.x).toBeGreaterThan(130);
 });
 
+test('keeps the vehicle still before Start even when A or D are pressed', async ({ page }) => {
+  await page.goto('/');
+  const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+
+  await page.keyboard.down('d');
+  await page.evaluate(() => window.advanceTime(600));
+  await page.keyboard.up('d');
+  await page.keyboard.down('a');
+  await page.evaluate(() => window.advanceTime(600));
+  await page.keyboard.up('a');
+
+  const after = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(after.goalState).toBe('editing');
+  expect(Math.abs(after.player.x - before.player.x)).toBeLessThan(2);
+});
+
+test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in the scene', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(420, 340);
+  await page.mouse.wheel(0, -120);
+  await page.keyboard.press('Control+Space');
+  await page.evaluate(() => {
+    window.dispatchEvent(new CompositionEvent('compositionstart'));
+    window.dispatchEvent(new CompositionEvent('compositionend', { data: '한' }));
+  });
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.caret.x).toBeGreaterThan(470);
+  expect(state.caret.y).toBeCloseTo(340, 0);
+  expect(state.caret.glyphSize).toBe(64);
+  expect(state.glyphCount).toBe(1);
+});
+
 test('supports visible Start, Undo, and Reset controls', async ({ page }) => {
   await page.goto('/');
   await page.mouse.click(360, 360);
@@ -49,6 +82,15 @@ test('supports visible Start, Undo, and Reset controls', async ({ page }) => {
   state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(state.goalState).toBe('editing');
   expect(state.glyphCount).toBe(0);
+});
+
+test('keeps toolbar controls inside a compact viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/');
+
+  const toolbarBox = await page.locator('.game-ui').boundingBox();
+  expect(toolbarBox).not.toBeNull();
+  expect((toolbarBox?.x ?? 0) + (toolbarBox?.width ?? 0)).toBeLessThanOrEqual(320);
 });
 
 test('moves to stage 2 with the small car', async ({ page }) => {
@@ -88,6 +130,21 @@ test('moves to stage 4 with a canyon challenge', async ({ page }) => {
 
   const screenshot = await page.screenshot({ path: 'test-results/stage-4-canyon.png' });
   expect(screenshot.length).toBeGreaterThan(20_000);
+});
+
+test('fails when the vehicle falls into the stage 4 canyon', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Start' }).click();
+  await page.keyboard.down('d');
+  await page.evaluate(() => window.advanceTime(4200));
+  await page.keyboard.up('d');
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.stageId).toBe('stage-4');
+  expect(state.goalState).toBe('failed');
 });
 
 test('gameplay screenshot is nonblank after glyph creation', async ({ page }) => {

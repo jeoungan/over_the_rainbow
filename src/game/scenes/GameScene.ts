@@ -10,6 +10,7 @@ import type { StageDefinition, VehicleKey } from '../types';
 import { getVehicleDrive } from '../vehicle/VehicleController';
 
 const WORLD = { width: 1280, height: 720 };
+const DRIVE_FORCE_SCALE = 0.2;
 
 export class GameScene extends Phaser.Scene {
   private stageIndex = 0;
@@ -27,6 +28,8 @@ export class GameScene extends Phaser.Scene {
   private uiRoot?: HTMLDivElement;
   private caretGraphic?: Phaser.GameObjects.Rectangle;
   private stageLabel?: Phaser.GameObjects.Text;
+  private statusLabel?: Phaser.GameObjects.Text;
+  private hintLabel?: Phaser.GameObjects.Text;
   private groundGraphics?: Phaser.GameObjects.Graphics;
   private groundBodies: MatterJS.BodyType[] = [];
 
@@ -84,7 +87,7 @@ export class GameScene extends Phaser.Scene {
       const drive = getVehicleDrive(vehicle, direction, 0);
       const body = this.player.body as MatterJS.BodyType;
 
-      this.player.applyForce(new Phaser.Math.Vector2(drive.forceX, 0));
+      this.player.applyForce(new Phaser.Math.Vector2(drive.forceX * DRIVE_FORCE_SCALE, 0));
       this.player.setAngularVelocity(body.angularVelocity * (1 - drive.angularDamping));
 
       if (Math.abs(body.velocity.x) > drive.maxSpeed) {
@@ -97,6 +100,12 @@ export class GameScene extends Phaser.Scene {
       didPassOverRainbow(previous, { x: this.player.x, y: this.player.y }, this.stage.rainbow)
     ) {
       this.goalState = 'won';
+    }
+
+    if (this.goalState === 'playing' && this.didFailStage()) {
+      this.goalState = 'failed';
+      this.activeKeys.left = false;
+      this.activeKeys.right = false;
     }
 
     this.drawHud();
@@ -346,10 +355,11 @@ export class GameScene extends Phaser.Scene {
 
     for (const segment of this.stage.groundSegments) {
       const left = segment.x - segment.width / 2;
+      const top = segment.y - segment.height / 2;
       graphics.fillStyle(groundColor, 1);
-      graphics.fillRect(left, 600, segment.width, 120);
+      graphics.fillRect(left, top, segment.width, WORLD.height - top);
       graphics.fillStyle(topColor, 0.45);
-      graphics.fillRect(left, 600, segment.width, 24);
+      graphics.fillRect(left, top, segment.width, 24);
 
       const body = this.matter.add.rectangle(segment.x, segment.y, segment.width, segment.height, {
         isStatic: true,
@@ -372,12 +382,23 @@ export class GameScene extends Phaser.Scene {
 
       if (gapWidth <= 0) continue;
 
-      graphics.fillStyle(0x5f6d83, 0.34);
-      graphics.fillRect(gapLeft, 600, gapWidth, 120);
-      graphics.fillStyle(0x39445f, 0.22);
-      graphics.fillTriangle(gapLeft, 600, gapLeft + gapWidth * 0.42, 720, gapLeft, 720);
-      graphics.fillTriangle(gapRight, 600, gapRight, 720, gapLeft + gapWidth * 0.58, 720);
+      const top = Math.min(leftSegment.y - leftSegment.height / 2, rightSegment.y - rightSegment.height / 2);
+      graphics.fillStyle(0x27314d, 0.48);
+      graphics.fillRect(gapLeft, top, gapWidth, WORLD.height - top);
+      graphics.fillStyle(0x111a31, 0.26);
+      graphics.fillTriangle(gapLeft, top, gapLeft + gapWidth * 0.46, WORLD.height, gapLeft, WORLD.height);
+      graphics.fillTriangle(gapRight, top, gapRight, WORLD.height, gapLeft + gapWidth * 0.54, WORLD.height);
+      graphics.lineStyle(4, 0x566378, 0.45);
+      graphics.lineBetween(gapLeft, top, gapLeft, WORLD.height);
+      graphics.lineBetween(gapRight, top, gapRight, WORLD.height);
     }
+  }
+
+  private didFailStage(): boolean {
+    if (!this.player) return false;
+
+    const fellToWorldBottom = this.player.y > WORLD.height - 36;
+    return fellToWorldBottom;
   }
 
   private createGlyph(char: string): void {
@@ -482,6 +503,36 @@ export class GameScene extends Phaser.Scene {
       this.stageLabel.setText(label);
     }
 
+    const statusText = this.getStatusText();
+    if (!this.statusLabel) {
+      this.statusLabel = this.add.text(24, 100, statusText, {
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: '16px',
+        color: '#34415f',
+        stroke: '#ffffff',
+        strokeThickness: 3,
+      });
+      this.statusLabel.setScrollFactor(0);
+      this.statusLabel.setDepth(20);
+    } else {
+      this.statusLabel.setText(statusText);
+    }
+
+    const hintText = this.goalState === 'editing' ? this.stage.hint : '';
+    if (!this.hintLabel) {
+      this.hintLabel = this.add.text(24, 126, hintText, {
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: '14px',
+        color: '#46536f',
+        stroke: '#ffffff',
+        strokeThickness: 3,
+      });
+      this.hintLabel.setScrollFactor(0);
+      this.hintLabel.setDepth(20);
+    } else {
+      this.hintLabel.setText(hintText);
+    }
+
     const caret = this.caret.snapshot();
     if (!this.caretGraphic) {
       this.caretGraphic = this.add.rectangle(caret.position.x, caret.position.y, 3, caret.glyphSize, 0x223047, 0.9);
@@ -490,6 +541,13 @@ export class GameScene extends Phaser.Scene {
 
     this.caretGraphic.setPosition(caret.position.x, caret.position.y - caret.glyphSize / 2);
     this.caretGraphic.setSize(3, caret.glyphSize);
+  }
+
+  private getStatusText(): string {
+    if (this.goalState === 'editing') return 'Place letters, then Start';
+    if (this.goalState === 'playing') return 'Driving';
+    if (this.goalState === 'won') return 'Cleared';
+    return 'Failed - Reset to retry';
   }
 
   private drawRainbow(): void {
