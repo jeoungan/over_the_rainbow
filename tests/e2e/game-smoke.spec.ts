@@ -50,3 +50,13 @@ test('supports visible Start, Undo, and Reset controls', async ({ page }) => {
   expect(state.goalState).toBe('editing');
   expect(state.glyphCount).toBe(0);
 });
+
+test('gameplay screenshot is nonblank after glyph creation', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(420, 340);
+  await page.keyboard.press('O');
+  await page.evaluate(() => window.advanceTime(500));
+
+  const screenshot = await page.screenshot({ path: 'test-results/gameplay-polish.png' });
+  expect(screenshot.length).toBeGreaterThan(20_000);
+});
