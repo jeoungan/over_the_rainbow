@@ -1,7 +1,7 @@
 export type GameTextIntent =
   | { type: 'glyph'; value: string }
   | { type: 'space' }
-  | { type: 'newline' }
+  | { type: 'release' }
   | { type: 'undo' }
   | { type: 'start' }
   | { type: 'none' };
@@ -36,7 +36,7 @@ export function createTextInputController(): TextInputController {
       if (event.ctrlKey && key.toLowerCase() === 'r') return { type: 'start' };
       if (composing) return none;
       if (commandModifier) return none;
-      if (key === 'Enter') return { type: 'newline' };
+      if (key === 'Enter') return { type: 'release' };
       if (key.length === 1 && key !== ' ') return { type: 'glyph', value: key };
 
       return none;

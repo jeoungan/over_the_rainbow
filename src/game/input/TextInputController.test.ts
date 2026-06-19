@@ -22,10 +22,10 @@ describe('TextInputController', () => {
     expect(controller.keyDown({ key: ' ', ctrlKey: true, metaKey: false, repeat: false })).toEqual({ type: 'space' });
   });
 
-  it('maps Enter to a line break', () => {
+  it('maps Enter to releasing the current typed glyphs', () => {
     const controller = createTextInputController();
     expect(controller.keyDown({ key: 'Enter', ctrlKey: false, metaKey: false, repeat: false })).toEqual({
-      type: 'newline',
+      type: 'release',
     });
   });
 

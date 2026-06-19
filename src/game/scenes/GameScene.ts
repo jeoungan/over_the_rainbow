@@ -37,6 +37,8 @@ export class GameScene extends Phaser.Scene {
   private rainbowGraphics?: Phaser.GameObjects.Graphics;
   private passLine?: Phaser.GameObjects.Rectangle;
   private glyphs: Phaser.GameObjects.Text[] = [];
+  private readonly pendingGlyphs = new Set<Phaser.GameObjects.Text>();
+  private readonly glyphPlans = new Map<Phaser.GameObjects.Text, GlyphPlan>();
   private uiRoot?: HTMLDivElement;
   private caretGraphic?: Phaser.GameObjects.Rectangle;
   private stageLabel?: Phaser.GameObjects.Text;
@@ -78,12 +80,15 @@ export class GameScene extends Phaser.Scene {
           caret: { x: caret.position.x, y: caret.position.y, glyphSize: caret.glyphSize },
           glyphs: this.glyphs.map((glyph) => {
             const body = glyph.body as MatterJS.BodyType | undefined;
+            const hasPhysics = Boolean(body);
             return {
               char: glyph.text,
               x: glyph.x,
               y: glyph.y,
               rotation: glyph.rotation,
+              hasPhysics,
               isStatic: Boolean(body?.isStatic),
+              isPending: this.pendingGlyphs.has(glyph),
             };
           }),
           glyphCount: this.glyphCount,
@@ -211,7 +216,10 @@ export class GameScene extends Phaser.Scene {
     if (!this.isGlyphBody(candidateBody) || candidateBody.isStatic) return;
     if (!this.isLockingSupportBody(supportBody)) return;
 
-    const glyph = this.glyphs.find((item) => this.getRootBody(item.body as MatterJS.BodyType) === candidateBody);
+    const glyph = this.glyphs.find((item) => {
+      const itemBody = item.body as MatterJS.BodyType | undefined;
+      return Boolean(itemBody && this.getRootBody(itemBody) === candidateBody);
+    });
     if (!glyph) return;
 
     const matterGlyph = glyph as MatterText;
@@ -229,7 +237,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isLockingSupportBody(body: MatterJS.BodyType): boolean {
-    return (body.isStatic && body.label.startsWith('ground:')) || body.label.startsWith('glyph:');
+    return body.isStatic && (body.label.startsWith('ground:') || body.label.startsWith('glyph:'));
   }
 
   private setupInput(): void {
@@ -332,7 +340,7 @@ export class GameScene extends Phaser.Scene {
     if (intent.type !== 'none') event.preventDefault();
     if (intent.type === 'glyph') this.createGlyph(intent.value);
     if (intent.type === 'space') this.moveCaretBySpace();
-    if (intent.type === 'newline') this.moveCaretToNextLine();
+    if (intent.type === 'release') this.releasePendingGlyphs();
     if (intent.type === 'undo') this.undoGlyph();
     if (intent.type === 'start') this.startVehicle();
   };
@@ -667,18 +675,37 @@ export class GameScene extends Phaser.Scene {
       strokeThickness: 4,
     });
     text.setOrigin(0.5, 0.5);
-    this.matter.add.gameObject(text, {
-      shape: this.createGlyphMatterShape(plan),
-      isStatic: false,
-      friction: 0.82,
-      frictionStatic: 1.1,
-      frictionAir: 0.018,
-      restitution: 0.05,
-      label: `glyph:${plan.char}`,
-    });
     this.glyphs.push(text);
+    this.pendingGlyphs.add(text);
+    this.glyphPlans.set(text, plan);
     this.glyphCount = this.glyphs.length;
     this.caret.advanceInline();
+  }
+
+  private releasePendingGlyphs(): void {
+    for (const glyph of Array.from(this.pendingGlyphs)) {
+      if (glyph.body) {
+        this.pendingGlyphs.delete(glyph);
+        continue;
+      }
+
+      const plan = this.glyphPlans.get(glyph);
+      if (!plan) {
+        this.pendingGlyphs.delete(glyph);
+        continue;
+      }
+
+      this.matter.add.gameObject(glyph, {
+        shape: this.createGlyphMatterShape(plan),
+        isStatic: false,
+        friction: 0.82,
+        frictionStatic: 1.1,
+        frictionAir: 0.018,
+        restitution: 0.05,
+        label: `glyph:${plan.char}`,
+      });
+      this.pendingGlyphs.delete(glyph);
+    }
   }
 
   private createGlyphMatterShape(plan: GlyphPlan): Phaser.Types.Physics.Matter.MatterSetBodyConfig {
@@ -701,10 +728,6 @@ export class GameScene extends Phaser.Scene {
     this.caret.placeAt({ x: caret.position.x + caret.glyphSize, y: caret.position.y });
   }
 
-  private moveCaretToNextLine(): void {
-    this.caret.lineBreak();
-  }
-
   private startVehicle(): void {
     if (this.goalState === 'editing') {
       this.goalState = 'playing';
@@ -714,7 +737,11 @@ export class GameScene extends Phaser.Scene {
 
   private undoGlyph(): void {
     const glyph = this.glyphs.pop();
-    glyph?.destroy();
+    if (glyph) {
+      this.pendingGlyphs.delete(glyph);
+      this.glyphPlans.delete(glyph);
+      glyph.destroy();
+    }
     this.glyphCount = this.glyphs.length;
   }
 
@@ -759,6 +786,9 @@ export class GameScene extends Phaser.Scene {
   private clearGlyphs(): void {
     this.glyphs.forEach((glyph) => glyph.destroy());
     this.glyphs = [];
+    this.pendingGlyphs.clear();
+    this.glyphPlans.clear();
+    this.playerSupportContacts.clear();
     this.glyphCount = 0;
   }
 

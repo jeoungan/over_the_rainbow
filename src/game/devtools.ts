@@ -15,7 +15,15 @@ export interface GameStateSnapshotInput {
   vehicleType: VehicleKey;
   player: { x: number; y: number; vx: number; vy: number };
   caret: { x: number; y: number; glyphSize: number };
-  glyphs: Array<{ char: string; x: number; y: number; rotation: number; isStatic: boolean }>;
+  glyphs: Array<{
+    char: string;
+    x: number;
+    y: number;
+    rotation: number;
+    hasPhysics: boolean;
+    isStatic: boolean;
+    isPending: boolean;
+  }>;
   glyphCount: number;
   goalState: GoalState;
 }

@@ -109,7 +109,7 @@ test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in 
   expect(state.glyphCount).toBe(1);
 });
 
-test('drops sky glyphs while typing across a line', async ({ page }) => {
+test('releases typed glyphs into physics when Enter is pressed', async ({ page }) => {
   await page.goto('/');
   await page.mouse.click(300, 240);
   await page.keyboard.press('A');
@@ -122,15 +122,22 @@ test('drops sky glyphs while typing across a line', async ({ page }) => {
   expect(afterSecondGlyph.glyphs[1].x).toBeGreaterThan(afterSecondGlyph.glyphs[0].x + 30);
   expect(afterSecondGlyph.caret.x).toBeGreaterThan(afterFirstGlyph.caret.x);
 
-  await page.keyboard.press('Enter');
-  const afterLineBreak = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(afterLineBreak.caret.x).toBeCloseTo(300, 0);
-  expect(afterLineBreak.caret.y).toBeGreaterThan(afterSecondGlyph.caret.y + 40);
+  await page.evaluate(() => window.advanceTime(900));
+  const beforeRelease = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(beforeRelease.glyphs[0].y).toBeCloseTo(afterSecondGlyph.glyphs[0].y, 0);
+  expect(beforeRelease.glyphs[1].y).toBeCloseTo(afterSecondGlyph.glyphs[1].y, 0);
+  expect(beforeRelease.glyphs[0].hasPhysics).toBe(false);
+  expect(beforeRelease.glyphs[1].hasPhysics).toBe(false);
 
+  await page.keyboard.press('Enter');
   await page.evaluate(() => window.advanceTime(900));
   const afterFall = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(afterFall.glyphs[0].y).toBeGreaterThan(afterSecondGlyph.glyphs[0].y + 80);
-  expect(afterFall.glyphs[1].y).toBeGreaterThan(afterSecondGlyph.glyphs[1].y + 80);
+  expect(afterFall.caret.x).toBe(afterSecondGlyph.caret.x);
+  expect(afterFall.caret.y).toBe(afterSecondGlyph.caret.y);
+  expect(afterFall.glyphs[0].hasPhysics).toBe(true);
+  expect(afterFall.glyphs[1].hasPhysics).toBe(true);
+  expect(afterFall.glyphs[0].y).toBeGreaterThan(beforeRelease.glyphs[0].y + 80);
+  expect(afterFall.glyphs[1].y).toBeGreaterThan(beforeRelease.glyphs[1].y + 80);
   expect(afterFall.glyphs[0].isStatic).toBe(true);
   expect(afterFall.glyphs[1].isStatic).toBe(true);
 });
@@ -287,6 +294,7 @@ test('can clear stage 5 with a gentle typed letter terrace', async ({ page }) =>
   ]) {
     await page.mouse.click(x, y);
     await page.keyboard.press('/');
+    await page.keyboard.press('Enter');
   }
 
   await page.evaluate(() => window.advanceTime(900));
@@ -333,6 +341,7 @@ test('can clear stage 6 with linked bridge letters', async ({ page }) => {
   ]) {
     await page.mouse.click(x, y);
     await page.keyboard.press('/');
+    await page.keyboard.press('Enter');
     await page.evaluate(() => window.advanceTime(160));
   }
 
