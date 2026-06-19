@@ -4,6 +4,7 @@ declare global {
   interface Window {
     render_game_to_text: () => string;
     advanceTime: (ms: number) => void;
+    overTheRainbowTest?: GameTestControls;
   }
 }
 
@@ -35,9 +36,34 @@ export function serializeGameState(snapshot: GameStateSnapshot): string {
   return JSON.stringify(snapshot);
 }
 
-export function installGameDevtools(getSnapshot: () => GameStateSnapshot, advanceTime: (ms: number) => void): void {
+export interface TestPlayerPose {
+  x: number;
+  y: number;
+  previousX?: number;
+  previousY?: number;
+  vx?: number;
+  vy?: number;
+  rotation?: number;
+}
+
+export interface GameTestControls {
+  goToStage: (stageIndex: number) => void;
+  placePlayer: (pose: TestPlayerPose) => void;
+}
+
+export function installGameDevtools(
+  getSnapshot: () => GameStateSnapshot,
+  advanceTime: (ms: number) => void,
+  testControls?: GameTestControls,
+): void {
   Object.assign(window, {
     render_game_to_text: () => serializeGameState(getSnapshot()),
     advanceTime,
   });
+
+  if (testControls) {
+    window.overTheRainbowTest = testControls;
+  } else {
+    delete window.overTheRainbowTest;
+  }
 }

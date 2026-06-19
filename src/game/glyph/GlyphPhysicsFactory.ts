@@ -64,8 +64,8 @@ export function createGlyphPlan(adapter: FontOutlineAdapter, request: GlyphReque
 
 function createFallbackParts(char: string, size: number): Pick<GlyphPlan, 'kind' | 'parts'> {
   const halfWidth = size / 2;
-  const slashOuter = size * 0.35;
-  const slashInner = size * 0.05;
+  const rampHalfRun = size;
+  const rampThickness = size / 6;
 
   if (char === 'A' || char === '^') {
     return {
@@ -98,10 +98,10 @@ function createFallbackParts(char: string, size: number): Pick<GlyphPlan, 'kind'
       kind: 'fallback-shape',
       parts: [
         [
-          { x: -slashOuter, y: 0 },
-          { x: -slashInner, y: 0 },
-          { x: slashOuter, y: -size },
-          { x: slashInner, y: -size },
+          { x: -rampHalfRun, y: 0 },
+          { x: -rampHalfRun + rampThickness, y: 0 },
+          { x: rampHalfRun, y: -size },
+          { x: rampHalfRun - rampThickness, y: -size },
         ],
       ],
     };
@@ -112,10 +112,10 @@ function createFallbackParts(char: string, size: number): Pick<GlyphPlan, 'kind'
       kind: 'fallback-shape',
       parts: [
         [
-          { x: slashInner, y: 0 },
-          { x: slashOuter, y: 0 },
-          { x: -slashInner, y: -size },
-          { x: -slashOuter, y: -size },
+          { x: rampHalfRun - rampThickness, y: 0 },
+          { x: rampHalfRun, y: 0 },
+          { x: -rampHalfRun + rampThickness, y: -size },
+          { x: -rampHalfRun, y: -size },
         ],
       ],
     };

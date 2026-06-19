@@ -20,11 +20,12 @@ describe('stage and vehicle data', () => {
       ['stage-2', 'smallCar'],
       ['stage-3', 'bicycle'],
       ['stage-4', 'smallCar'],
+      ['stage-5', 'walking'],
     ]);
   });
 
   it('labels the playable stages by stage number', () => {
-    expect(STAGES.map((stage) => stage.title)).toEqual(['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4']);
+    expect(STAGES.map((stage) => stage.title)).toEqual(['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5']);
   });
 
   it('allows text summoning after movement in every stage', () => {
@@ -36,6 +37,15 @@ describe('stage and vehicle data', () => {
       expect(stage.rainbow.centerY).toBeGreaterThanOrEqual(250);
       expect(stage.rainbow.centerX - stage.spawn.x).toBeLessThanOrEqual(680);
     }
+  });
+
+  it('keeps the initial flat-ground spawn points aligned', () => {
+    expect(STAGES.slice(0, 4).map((stage) => [stage.id, stage.spawn])).toEqual([
+      ['stage-1', { x: 130, y: 610 }],
+      ['stage-2', { x: 130, y: 610 }],
+      ['stage-3', { x: 130, y: 610 }],
+      ['stage-4', { x: 130, y: 610 }],
+    ]);
   });
 
   it('makes the bicycle stage the closest low rainbow challenge', () => {
@@ -56,6 +66,27 @@ describe('stage and vehicle data', () => {
     expect(stage4.groundSegments).toHaveLength(2);
     expect(rightGround.x - rightGround.width / 2).toBeGreaterThan(leftGround.x + leftGround.width / 2);
     expect(rightGround.x - rightGround.width / 2 - (leftGround.x + leftGround.width / 2)).toBeGreaterThanOrEqual(320);
+  });
+
+  it('adds a terraced walking stage that rewards gentle long ramps', () => {
+    const stage5 = getStage('stage-5');
+    const [leftGround, middleGround, rightGround] = stage5.groundSegments;
+
+    expect(stage5.vehicleKey).toBe('walking');
+    expect(stage5.terrainTheme).toBe('terrace');
+    expect(stage5.rainbow.centerY).toBeLessThan(320);
+    expect(stage5.rainbow.centerX - stage5.spawn.x).toBeGreaterThan(720);
+    expect(stage5.groundSegments).toHaveLength(3);
+    expect(middleGround.y).toBeLessThan(leftGround.y);
+    expect(rightGround.x - rightGround.width / 2).toBeGreaterThan(middleGround.x + middleGround.width / 2);
+  });
+
+  it('makes stage 5 farther and higher than the canyon stage by rainbow variables', () => {
+    const stage4 = getStage('stage-4');
+    const stage5 = getStage('stage-5');
+
+    expect(stage5.rainbow.centerX - stage5.spawn.x).toBeGreaterThan(stage4.rainbow.centerX - stage4.spawn.x);
+    expect(stage5.rainbow.passTopY).toBeLessThan(stage4.rainbow.passTopY);
   });
 
   it('retrieves a stage by id', () => {

@@ -11,7 +11,8 @@ import { getVehicleDrive } from '../vehicle/VehicleController';
 import { estimateSlopeDegrees } from '../vehicle/SlopeEstimator';
 
 const WORLD = { width: 1280, height: 720 };
-const DRIVE_FORCE_SCALE = 0.2;
+const DRIVE_FORCE_SCALE = 1.6;
+const E2E_QUERY_FLAG = 'e2e';
 
 export class GameScene extends Phaser.Scene {
   private stageIndex = 0;
@@ -33,6 +34,7 @@ export class GameScene extends Phaser.Scene {
   private hintLabel?: Phaser.GameObjects.Text;
   private groundGraphics?: Phaser.GameObjects.Graphics;
   private groundBodies: MatterJS.BodyType[] = [];
+  private nextStageButton?: HTMLButtonElement;
 
   constructor() {
     super('GameScene');
@@ -73,6 +75,12 @@ export class GameScene extends Phaser.Scene {
           this.matter.world.step(1000 / 60);
         }
       },
+      this.shouldInstallTestControls()
+        ? {
+            goToStage: (stageIndex) => this.changeStageTo(stageIndex),
+            placePlayer: (pose) => this.placePlayerForTest(pose),
+          }
+        : undefined,
     );
   }
 
@@ -143,16 +151,19 @@ export class GameScene extends Phaser.Scene {
     const uiRoot = document.createElement('div');
     uiRoot.className = 'game-ui';
 
+    this.nextStageButton = this.createButton('Next Stage', this.handleNextStageClick);
+    this.nextStageButton.className = 'next-stage-button';
+
     uiRoot.append(
       this.createButton('Start', this.handleStartClick),
       this.createButton('Undo', this.handleUndoClick),
       this.createButton('Reset', this.handleResetClick),
-      this.createButton('Prev', this.handlePreviousStageClick),
-      this.createButton('Next', this.handleNextStageClick),
+      this.nextStageButton,
     );
 
     host.append(uiRoot);
     this.uiRoot = uiRoot;
+    this.refreshUi();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.uiRoot?.remove();
@@ -180,12 +191,10 @@ export class GameScene extends Phaser.Scene {
     this.resetStage();
   };
 
-  private readonly handlePreviousStageClick = (): void => {
-    this.changeStage(-1);
-  };
-
   private readonly handleNextStageClick = (): void => {
-    this.changeStage(1);
+    if (this.goalState === 'won') {
+      this.changeStage(1);
+    }
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -346,12 +355,18 @@ export class GameScene extends Phaser.Scene {
     this.groundBodies = [];
 
     const graphics = this.add.graphics();
-    const isCanyon = this.stage.id === 'stage-4';
-    const groundColor = isCanyon ? 0xb9c98f : 0x8fc89d;
-    const topColor = isCanyon ? 0xffe0a6 : 0xfff4c7;
+    const isCanyon = this.stage.terrainTheme === 'canyon';
+    const isTerrace = this.stage.terrainTheme === 'terrace';
+    const groundColor = isCanyon ? 0xb9c98f : isTerrace ? 0xc9b16f : 0x8fc89d;
+    const topColor = isCanyon ? 0xffe0a6 : isTerrace ? 0xf8d88d : 0xfff4c7;
 
     if (isCanyon) {
       this.drawCanyonGaps(graphics);
+    }
+
+    if (isTerrace) {
+      this.drawTerraceBackdrop(graphics);
+      this.drawTerraceGaps(graphics);
     }
 
     for (const segment of this.stage.groundSegments) {
@@ -362,6 +377,10 @@ export class GameScene extends Phaser.Scene {
       graphics.fillStyle(topColor, 0.45);
       graphics.fillRect(left, top, segment.width, 24);
 
+      if (isTerrace) {
+        this.drawTerraceFace(graphics, left, top, segment.width);
+      }
+
       const body = this.matter.add.rectangle(segment.x, segment.y, segment.width, segment.height, {
         isStatic: true,
         label: `ground:${this.stage.id}`,
@@ -370,6 +389,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.groundGraphics = graphics;
+  }
+
+  private drawTerraceBackdrop(graphics: Phaser.GameObjects.Graphics): void {
+    graphics.fillStyle(0xb7cc9a, 0.2);
+    graphics.fillTriangle(100, 650, 420, 420, 740, 650);
+    graphics.fillTriangle(610, 650, 930, 390, 1250, 650);
+    graphics.fillStyle(0x93b8bd, 0.12);
+    graphics.fillTriangle(380, 650, 650, 500, 920, 650);
   }
 
   private drawCanyonGaps(graphics: Phaser.GameObjects.Graphics): void {
@@ -395,10 +422,42 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private drawTerraceGaps(graphics: Phaser.GameObjects.Graphics): void {
+    const sortedSegments = [...this.stage.groundSegments].sort((a, b) => a.x - b.x);
+    for (let index = 0; index < sortedSegments.length - 1; index += 1) {
+      const leftSegment = sortedSegments[index];
+      const rightSegment = sortedSegments[index + 1];
+      const gapLeft = leftSegment.x + leftSegment.width / 2;
+      const gapRight = rightSegment.x - rightSegment.width / 2;
+      const gapWidth = gapRight - gapLeft;
+
+      if (gapWidth <= 0) continue;
+
+      const top = Math.min(leftSegment.y - leftSegment.height / 2, rightSegment.y - rightSegment.height / 2);
+      graphics.fillStyle(0x5f7891, 0.2);
+      graphics.fillRect(gapLeft, top, gapWidth, WORLD.height - top);
+      graphics.fillStyle(0xffffff, 0.18);
+      graphics.fillTriangle(gapLeft, top, gapRight, top, gapLeft + gapWidth / 2, top + 72);
+      graphics.lineStyle(3, 0x7e6746, 0.34);
+      graphics.lineBetween(gapLeft, top, gapLeft + gapWidth * 0.18, WORLD.height);
+      graphics.lineBetween(gapRight, top, gapRight - gapWidth * 0.18, WORLD.height);
+    }
+  }
+
+  private drawTerraceFace(graphics: Phaser.GameObjects.Graphics, left: number, top: number, width: number): void {
+    graphics.lineStyle(2, 0x7a5f38, 0.2);
+    for (let y = top + 38; y < WORLD.height; y += 30) {
+      graphics.lineBetween(left + 14, y, left + width - 14, y - 6);
+    }
+
+    graphics.lineStyle(2, 0xfff2bc, 0.26);
+    graphics.lineBetween(left + 8, top + 16, left + width - 8, top + 10);
+  }
+
   private didFailStage(): boolean {
     if (!this.player) return false;
 
-    const fellToWorldBottom = this.player.y > WORLD.height - 36;
+    const fellToWorldBottom = this.player.y > WORLD.height - 48;
     return fellToWorldBottom;
   }
 
@@ -429,6 +488,7 @@ export class GameScene extends Phaser.Scene {
     text.setOrigin(0.5, 0.5);
     this.matter.add.gameObject(text, {
       shape: this.createGlyphMatterShape(plan),
+      isStatic: this.goalState === 'editing',
       friction: 0.82,
       restitution: 0.05,
       label: `glyph:${plan.char}`,
@@ -475,9 +535,35 @@ export class GameScene extends Phaser.Scene {
   }
 
   private changeStage(direction: -1 | 1): void {
-    const nextIndex = (this.stageIndex + direction + STAGES.length) % STAGES.length;
+    this.changeStageTo(this.stageIndex + direction);
+  }
+
+  private changeStageTo(index: number): void {
+    const truncatedIndex = Number.isFinite(index) ? Math.trunc(index) : 0;
+    const nextIndex = ((truncatedIndex % STAGES.length) + STAGES.length) % STAGES.length;
     this.clearGlyphs();
     this.loadStage(nextIndex);
+  }
+
+  private placePlayerForTest(pose: {
+    x: number;
+    y: number;
+    previousX?: number;
+    previousY?: number;
+    vx?: number;
+    vy?: number;
+    rotation?: number;
+  }): void {
+    if (!this.player) return;
+
+    this.player.setPosition(pose.x, pose.y);
+    this.player.setVelocity(pose.vx ?? 0, pose.vy ?? 0);
+    this.player.setRotation(pose.rotation ?? 0);
+    this.player.setAngularVelocity(0);
+    this.previousPlayerPosition = {
+      x: pose.previousX ?? pose.x,
+      y: pose.previousY ?? pose.y,
+    };
   }
 
   private clearGlyphs(): void {
@@ -487,6 +573,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawHud(): void {
+    this.refreshUi();
+
     const vehicle = VEHICLES[this.stage.vehicleKey];
     const label = `${this.stage.title} / ${vehicle.label}`;
 
@@ -547,8 +635,21 @@ export class GameScene extends Phaser.Scene {
   private getStatusText(): string {
     if (this.goalState === 'editing') return 'Place letters, then Start';
     if (this.goalState === 'playing') return 'Driving';
-    if (this.goalState === 'won') return 'Cleared';
+    if (this.goalState === 'won') return 'Cleared - Next Stage';
     return 'Failed - Reset to retry';
+  }
+
+  private refreshUi(): void {
+    if (!this.nextStageButton) return;
+
+    const canAdvance = this.goalState === 'won';
+    this.nextStageButton.hidden = !canAdvance;
+    this.nextStageButton.disabled = !canAdvance;
+  }
+
+  private shouldInstallTestControls(): boolean {
+    const params = new URLSearchParams(window.location.search);
+    return import.meta.env.DEV && params.get(E2E_QUERY_FLAG) === '1';
   }
 
   private drawRainbow(): void {

@@ -1,4 +1,27 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function openForE2e(page: Page): Promise<void> {
+  await page.goto('/?e2e=1');
+  await waitForTestControls(page);
+}
+
+async function waitForTestControls(page: Page): Promise<void> {
+  await page.waitForFunction(() => Boolean(window.overTheRainbowTest?.goToStage));
+}
+
+async function goToStage(page: Page, stageIndex: number): Promise<void> {
+  await page.evaluate((targetStageIndex) => {
+    window.overTheRainbowTest?.goToStage(targetStageIndex);
+  }, stageIndex);
+}
+
+async function setGlyphSize(page: Page, targetSize: number): Promise<void> {
+  let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  while (state.caret.glyphSize < targetSize) {
+    await page.mouse.wheel(0, -120);
+    state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  }
+}
 
 test('renders the game canvas and exposes text state', async ({ page }) => {
   await page.goto('/');
@@ -10,6 +33,13 @@ test('renders the game canvas and exposes text state', async ({ page }) => {
   expect(state.stageId).toBe('stage-1');
   expect(state.vehicleType).toBe('racingCar');
   expect(state.goalState).toBe('editing');
+});
+
+test('does not expose test stage controls in the default page', async ({ page }) => {
+  await page.goto('/');
+
+  const hasTestControls = await page.evaluate(() => Boolean(window.overTheRainbowTest));
+  expect(hasTestControls).toBe(false);
 });
 
 test('creates a glyph, starts the vehicle, and moves right', async ({ page }) => {
@@ -65,6 +95,8 @@ test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in 
 
 test('supports visible Start, Undo, and Reset controls', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('button', { hasText: 'Next Stage' })).toBeHidden();
+
   await page.mouse.click(360, 360);
   await page.keyboard.press('H');
   await page.getByRole('button', { name: 'Undo' }).click();
@@ -84,6 +116,34 @@ test('supports visible Start, Undo, and Reset controls', async ({ page }) => {
   expect(state.glyphCount).toBe(0);
 });
 
+test('reveals the next stage control only after clearing the rainbow', async ({ page }) => {
+  await openForE2e(page);
+  await expect(page.locator('button', { hasText: 'Next Stage' })).toBeHidden();
+
+  await page.getByRole('button', { name: 'Start' }).click();
+  await page.evaluate(() => {
+    window.overTheRainbowTest?.placePlayer({
+      x: 704,
+      y: 272,
+      previousX: 692,
+      previousY: 272,
+      vx: 0,
+      vy: 0,
+    });
+    window.advanceTime(16);
+  });
+
+  let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.goalState).toBe('won');
+
+  await expect(page.getByRole('button', { name: 'Next Stage' })).toBeVisible();
+  await page.getByRole('button', { name: 'Next Stage' }).click();
+
+  state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.stageId).toBe('stage-2');
+  expect(state.goalState).toBe('editing');
+});
+
 test('keeps toolbar controls inside a compact viewport', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/');
@@ -94,10 +154,10 @@ test('keeps toolbar controls inside a compact viewport', async ({ page }) => {
 });
 
 test('moves to stage 2 with the small car', async ({ page }) => {
-  await page.goto('/');
+  await openForE2e(page);
   await page.mouse.click(360, 360);
   await page.keyboard.press('R');
-  await page.getByRole('button', { name: 'Next' }).click();
+  await goToStage(page, 1);
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(state.stageId).toBe('stage-2');
@@ -107,9 +167,8 @@ test('moves to stage 2 with the small car', async ({ page }) => {
 });
 
 test('moves to stage 3 with the bicycle', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
+  await openForE2e(page);
+  await goToStage(page, 2);
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(state.stageId).toBe('stage-3');
@@ -118,10 +177,8 @@ test('moves to stage 3 with the bicycle', async ({ page }) => {
 });
 
 test('moves to stage 4 with a canyon challenge', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
+  await openForE2e(page);
+  await goToStage(page, 3);
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(state.stageId).toBe('stage-4');
@@ -132,11 +189,67 @@ test('moves to stage 4 with a canyon challenge', async ({ page }) => {
   expect(screenshot.length).toBeGreaterThan(20_000);
 });
 
+test('moves to stage 5 with a terraced walking challenge', async ({ page }) => {
+  await openForE2e(page);
+  await goToStage(page, 4);
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.stageId).toBe('stage-5');
+  expect(state.vehicleType).toBe('walking');
+  expect(state.goalState).toBe('editing');
+
+  const screenshot = await page.screenshot({ path: 'test-results/stage-5-terrace.png' });
+  expect(screenshot.length).toBeGreaterThan(20_000);
+});
+
+test('wraps negative e2e stage indices safely', async ({ page }) => {
+  await openForE2e(page);
+  await goToStage(page, -6);
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.stageId).toBe('stage-5');
+  expect(state.vehicleType).toBe('walking');
+});
+
+test('can clear stage 5 with a gentle typed letter terrace', async ({ page }) => {
+  test.setTimeout(70_000);
+  await openForE2e(page);
+  await goToStage(page, 4);
+  await setGlyphSize(page, 144);
+
+  for (const [x, y] of [
+    [275, 648],
+    [360, 614],
+    [445, 580],
+    [530, 546],
+    [615, 512],
+    [700, 478],
+    [785, 444],
+    [870, 410],
+    [955, 376],
+    [1040, 342],
+    [1125, 308],
+  ]) {
+    await page.mouse.click(x, y);
+    await page.keyboard.press('/');
+  }
+
+  await page.evaluate(() => window.advanceTime(900));
+  await page.getByRole('button', { name: 'Start' }).click();
+  await page.keyboard.down('d');
+  await page.evaluate(() => window.advanceTime(30000));
+  await page.keyboard.up('d');
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.goalState).toBe('won');
+
+  const screenshot = await page.screenshot({ path: 'test-results/stage-5-clear.png' });
+  expect(screenshot.length).toBeGreaterThan(20_000);
+});
+
 test('fails when the vehicle falls into the stage 4 canyon', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
+  await openForE2e(page);
+  await goToStage(page, 3);
   await page.getByRole('button', { name: 'Start' }).click();
   await page.keyboard.down('d');
   await page.evaluate(() => window.advanceTime(4200));

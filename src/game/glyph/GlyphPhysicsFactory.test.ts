@@ -52,10 +52,10 @@ describe('GlyphPhysicsFactory', () => {
     const plan = createGlyphPlan(emptyAdapter, { char: '/', fontKey: 'serif', size: 72, x: 100, y: 200 });
 
     expect(plan.parts[0]).toEqual([
-      { x: -25.2, y: 0 },
-      { x: -3.6, y: 0 },
-      { x: 25.2, y: -72 },
-      { x: 3.6, y: -72 },
+      { x: -72, y: 0 },
+      { x: -60, y: 0 },
+      { x: 72, y: -72 },
+      { x: 60, y: -72 },
     ]);
   });
 

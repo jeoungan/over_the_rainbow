@@ -1,5 +1,6 @@
 export type VehicleKey = 'walking' | 'bicycle' | 'smallCar' | 'racingCar';
 export type StageId = `stage-${number}`;
+export type TerrainTheme = 'meadow' | 'canyon' | 'terrace';
 
 export interface VehicleTuning {
   key: VehicleKey;
@@ -36,6 +37,7 @@ export interface StageDefinition {
   title: string;
   hint: string;
   vehicleKey: VehicleKey;
+  terrainTheme: TerrainTheme;
   spawn: Point;
   rainbow: RainbowTarget;
   groundSegments: GroundSegment[];
