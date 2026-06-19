@@ -29,4 +29,19 @@ describe('CaretController', () => {
     for (let i = 0; i < 40; i += 1) caret.changeSizeFromWheel(120);
     expect(caret.snapshot().glyphSize).toBe(24);
   });
+
+  it('advances horizontally after a typed glyph', () => {
+    const caret = createCaretController({ width: 1200, height: 720 });
+    caret.placeAt({ x: 300, y: 250 });
+    caret.advanceInline();
+    expect(caret.snapshot().position).toEqual({ x: 348, y: 250 });
+  });
+
+  it('moves to the next line from the current line start', () => {
+    const caret = createCaretController({ width: 1200, height: 720 });
+    caret.placeAt({ x: 300, y: 250 });
+    caret.advanceInline();
+    caret.lineBreak();
+    expect(caret.snapshot().position).toEqual({ x: 300, y: 317 });
+  });
 });

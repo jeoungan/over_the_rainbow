@@ -18,6 +18,12 @@ type MatterCollisionEvent = {
   pairs: Phaser.Types.Physics.Matter.MatterCollisionPair[];
 };
 
+type MatterText = Phaser.GameObjects.Text & {
+  setAngularVelocity(value: number): Phaser.GameObjects.Text;
+  setStatic(value: boolean): Phaser.GameObjects.Text;
+  setVelocity(x: number, y: number): Phaser.GameObjects.Text;
+};
+
 export class GameScene extends Phaser.Scene {
   private stageIndex = 0;
   private stage: StageDefinition = STAGES[0];
@@ -70,6 +76,16 @@ export class GameScene extends Phaser.Scene {
             vy: body?.velocity.y ?? 0,
           },
           caret: { x: caret.position.x, y: caret.position.y, glyphSize: caret.glyphSize },
+          glyphs: this.glyphs.map((glyph) => {
+            const body = glyph.body as MatterJS.BodyType | undefined;
+            return {
+              char: glyph.text,
+              x: glyph.x,
+              y: glyph.y,
+              rotation: glyph.rotation,
+              isStatic: Boolean(body?.isStatic),
+            };
+          }),
           glyphCount: this.glyphCount,
           goalState: this.goalState,
         };
@@ -148,6 +164,7 @@ export class GameScene extends Phaser.Scene {
 
   private updatePlayerSupportContacts(event: MatterCollisionEvent, action: 'add' | 'delete'): void {
     for (const pair of event.pairs) {
+      if (action === 'add') this.lockGlyphsTouchingStaticSupport(pair);
       if (!this.isPlayerSupportPair(pair)) continue;
 
       if (action === 'add') {
@@ -180,6 +197,39 @@ export class GameScene extends Phaser.Scene {
 
   private hasSupportLabel(body: MatterJS.BodyType): boolean {
     return body.label.startsWith('ground:') || body.label.startsWith('glyph:');
+  }
+
+  private lockGlyphsTouchingStaticSupport(pair: Phaser.Types.Physics.Matter.MatterCollisionPair): void {
+    this.lockGlyphIfSupported(pair.bodyA, pair.bodyB);
+    this.lockGlyphIfSupported(pair.bodyB, pair.bodyA);
+  }
+
+  private lockGlyphIfSupported(candidate: MatterJS.BodyType, support: MatterJS.BodyType): void {
+    const candidateBody = this.getRootBody(candidate);
+    const supportBody = this.getRootBody(support);
+
+    if (!this.isGlyphBody(candidateBody) || candidateBody.isStatic) return;
+    if (!this.isLockingSupportBody(supportBody)) return;
+
+    const glyph = this.glyphs.find((item) => this.getRootBody(item.body as MatterJS.BodyType) === candidateBody);
+    if (!glyph) return;
+
+    const matterGlyph = glyph as MatterText;
+    matterGlyph.setVelocity(0, 0);
+    matterGlyph.setAngularVelocity(0);
+    matterGlyph.setStatic(true);
+  }
+
+  private getRootBody(body: MatterJS.BodyType): MatterJS.BodyType {
+    return body.parent && body.parent !== body ? body.parent : body;
+  }
+
+  private isGlyphBody(body: MatterJS.BodyType): boolean {
+    return body.label.startsWith('glyph:');
+  }
+
+  private isLockingSupportBody(body: MatterJS.BodyType): boolean {
+    return (body.isStatic && body.label.startsWith('ground:')) || body.label.startsWith('glyph:');
   }
 
   private setupInput(): void {
@@ -282,6 +332,7 @@ export class GameScene extends Phaser.Scene {
     if (intent.type !== 'none') event.preventDefault();
     if (intent.type === 'glyph') this.createGlyph(intent.value);
     if (intent.type === 'space') this.moveCaretBySpace();
+    if (intent.type === 'newline') this.moveCaretToNextLine();
     if (intent.type === 'undo') this.undoGlyph();
     if (intent.type === 'start') this.startVehicle();
   };
@@ -368,15 +419,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawBackground(): void {
-    this.add.rectangle(WORLD.width / 2, WORLD.height / 2, WORLD.width, WORLD.height, 0xdcecff);
-    this.add.rectangle(WORLD.width / 2, 515, WORLD.width, 360, 0xf7d6df, 0.22);
-    this.add.ellipse(260, 536, 640, 150, 0x98c8aa, 0.34);
-    this.add.ellipse(760, 550, 720, 180, 0xf3d58a, 0.25);
-    this.add.ellipse(1110, 528, 580, 140, 0x7fb8c8, 0.28);
-    this.add.ellipse(240, 170, 280, 80, 0xffffff, 0.55);
-    this.add.ellipse(360, 190, 210, 64, 0xffffff, 0.38);
-    this.add.ellipse(870, 120, 360, 90, 0xffffff, 0.45);
-    this.add.ellipse(980, 145, 260, 70, 0xffffff, 0.34);
+    this.add.rectangle(WORLD.width / 2, 160, WORLD.width, 320, 0xd7e9fb);
+    this.add.rectangle(WORLD.width / 2, 430, WORLD.width, 220, 0xe8edf5);
+    this.add.rectangle(WORLD.width / 2, 640, WORLD.width, 160, 0xcfe6d2);
+
+    const graphics = this.add.graphics();
+    graphics.fillStyle(0x8aa7b7, 0.18);
+    graphics.fillTriangle(40, 640, 260, 430, 480, 640);
+    graphics.fillTriangle(350, 640, 620, 390, 900, 640);
+    graphics.fillTriangle(760, 640, 1040, 410, 1280, 640);
+    graphics.fillStyle(0x5f7f8f, 0.12);
+    graphics.fillTriangle(0, 640, 180, 505, 340, 640);
+    graphics.fillTriangle(520, 640, 760, 500, 980, 640);
+    graphics.fillTriangle(930, 640, 1155, 500, 1280, 640);
+    graphics.lineStyle(2, 0xffffff, 0.35);
+    graphics.lineBetween(0, 372, WORLD.width, 372);
+
+    this.drawCloudCluster(240, 125, 1);
+    this.drawCloudCluster(900, 92, 1.2);
+    this.drawCloudCluster(1110, 162, 0.7);
+  }
+
+  private drawCloudCluster(x: number, y: number, scale: number): void {
+    const cloudColor = 0xffffff;
+    this.add.ellipse(x, y, 185 * scale, 48 * scale, cloudColor, 0.55);
+    this.add.ellipse(x + 72 * scale, y + 10 * scale, 150 * scale, 42 * scale, cloudColor, 0.42);
+    this.add.ellipse(x - 58 * scale, y + 8 * scale, 120 * scale, 36 * scale, cloudColor, 0.38);
   }
 
   private loadStage(index: number): void {
@@ -393,6 +461,7 @@ export class GameScene extends Phaser.Scene {
     const vehicle = VEHICLES[this.stage.vehicleKey];
     this.player = this.matter.add.image(this.stage.spawn.x, this.stage.spawn.y, `vehicle-${vehicle.key}`, undefined, {
       label: `vehicle:${vehicle.key}`,
+      isStatic: true,
       mass: vehicle.mass,
       friction: 0.9,
       frictionAir: 0.015,
@@ -600,13 +669,16 @@ export class GameScene extends Phaser.Scene {
     text.setOrigin(0.5, 0.5);
     this.matter.add.gameObject(text, {
       shape: this.createGlyphMatterShape(plan),
-      isStatic: this.goalState === 'editing',
+      isStatic: false,
       friction: 0.82,
+      frictionStatic: 1.1,
+      frictionAir: 0.018,
       restitution: 0.05,
       label: `glyph:${plan.char}`,
     });
     this.glyphs.push(text);
     this.glyphCount = this.glyphs.length;
+    this.caret.advanceInline();
   }
 
   private createGlyphMatterShape(plan: GlyphPlan): Phaser.Types.Physics.Matter.MatterSetBodyConfig {
@@ -629,9 +701,14 @@ export class GameScene extends Phaser.Scene {
     this.caret.placeAt({ x: caret.position.x + caret.glyphSize, y: caret.position.y });
   }
 
+  private moveCaretToNextLine(): void {
+    this.caret.lineBreak();
+  }
+
   private startVehicle(): void {
     if (this.goalState === 'editing') {
       this.goalState = 'playing';
+      this.player?.setStatic(false);
     }
   }
 

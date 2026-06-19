@@ -15,6 +15,7 @@ export interface GameStateSnapshotInput {
   vehicleType: VehicleKey;
   player: { x: number; y: number; vx: number; vy: number };
   caret: { x: number; y: number; glyphSize: number };
+  glyphs: Array<{ char: string; x: number; y: number; rotation: number; isStatic: boolean }>;
   glyphCount: number;
   goalState: GoalState;
 }
@@ -27,6 +28,7 @@ export function createGameStateSnapshot(input: GameStateSnapshotInput): GameStat
     vehicleType: input.vehicleType,
     player: { ...input.player },
     caret: { ...input.caret },
+    glyphs: input.glyphs.map((glyph) => ({ ...glyph })),
     glyphCount: input.glyphCount,
     goalState: input.goalState,
   };

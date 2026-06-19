@@ -22,6 +22,13 @@ describe('TextInputController', () => {
     expect(controller.keyDown({ key: ' ', ctrlKey: true, metaKey: false, repeat: false })).toEqual({ type: 'space' });
   });
 
+  it('maps Enter to a line break', () => {
+    const controller = createTextInputController();
+    expect(controller.keyDown({ key: 'Enter', ctrlKey: false, metaKey: false, repeat: false })).toEqual({
+      type: 'newline',
+    });
+  });
+
   it('maps Backspace to undo and Ctrl+R to start', () => {
     const controller = createTextInputController();
     expect(controller.keyDown({ key: 'Backspace', ctrlKey: false, metaKey: false, repeat: false })).toEqual({ type: 'undo' });

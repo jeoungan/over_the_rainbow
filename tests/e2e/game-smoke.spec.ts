@@ -109,6 +109,32 @@ test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in 
   expect(state.glyphCount).toBe(1);
 });
 
+test('drops sky glyphs while typing across a line', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(300, 240);
+  await page.keyboard.press('A');
+
+  const afterFirstGlyph = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  await page.keyboard.press('B');
+  const afterSecondGlyph = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+
+  expect(afterSecondGlyph.glyphCount).toBe(2);
+  expect(afterSecondGlyph.glyphs[1].x).toBeGreaterThan(afterSecondGlyph.glyphs[0].x + 30);
+  expect(afterSecondGlyph.caret.x).toBeGreaterThan(afterFirstGlyph.caret.x);
+
+  await page.keyboard.press('Enter');
+  const afterLineBreak = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(afterLineBreak.caret.x).toBeCloseTo(300, 0);
+  expect(afterLineBreak.caret.y).toBeGreaterThan(afterSecondGlyph.caret.y + 40);
+
+  await page.evaluate(() => window.advanceTime(900));
+  const afterFall = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(afterFall.glyphs[0].y).toBeGreaterThan(afterSecondGlyph.glyphs[0].y + 80);
+  expect(afterFall.glyphs[1].y).toBeGreaterThan(afterSecondGlyph.glyphs[1].y + 80);
+  expect(afterFall.glyphs[0].isStatic).toBe(true);
+  expect(afterFall.glyphs[1].isStatic).toBe(true);
+});
+
 test('supports visible Start, Undo, and Reset controls', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('button', { hasText: 'Next Stage' })).toBeHidden();
@@ -288,33 +314,38 @@ test('can clear stage 6 with linked bridge letters', async ({ page }) => {
 
   for (const [x, y] of [
     [300, 648],
-    [390, 612],
+    [360, 624],
+    [420, 600],
     [480, 576],
-    [570, 540],
+    [540, 552],
+    [600, 528],
     [660, 504],
-    [750, 468],
+    [720, 480],
+    [780, 456],
     [840, 432],
-    [930, 396],
+    [900, 408],
+    [960, 384],
     [1020, 360],
-    [1110, 324],
+    [1080, 336],
+    [1140, 312],
     [1200, 288],
-    [1260, 252],
+    [1260, 264],
   ]) {
     await page.mouse.click(x, y);
     await page.keyboard.press('/');
+    await page.evaluate(() => window.advanceTime(160));
   }
 
   await page.evaluate(() => window.advanceTime(900));
   await page.getByRole('button', { name: 'Start' }).click();
   await page.keyboard.down('d');
-  await page.evaluate(() => window.advanceTime(22000));
+  await page.evaluate(() => window.advanceTime(26000));
   await page.keyboard.up('d');
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(state.goalState).toBe('won');
-
   const screenshot = await page.screenshot({ path: 'test-results/stage-6-clear.png' });
   expect(screenshot.length).toBeGreaterThan(20_000);
+  expect(state.goalState).toBe('won');
 });
 
 test('fails when the vehicle falls into the stage 4 canyon', async ({ page }) => {

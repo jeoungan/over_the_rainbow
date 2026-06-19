@@ -9,6 +9,7 @@ describe('devtools state', () => {
         vehicleType: 'racingCar',
         player: { x: 120, y: 500, vx: 1.5, vy: -0.2 },
         caret: { x: 300, y: 240, glyphSize: 64 },
+        glyphs: [{ char: 'A', x: 320, y: 280, rotation: 0.1, isStatic: false }],
         glyphCount: 3,
         goalState: 'playing',
       }),
@@ -19,6 +20,7 @@ describe('devtools state', () => {
       vehicleType: 'racingCar',
       player: { x: 120, y: 500, vx: 1.5, vy: -0.2 },
       caret: { x: 300, y: 240, glyphSize: 64 },
+      glyphs: [{ char: 'A', x: 320, y: 280, rotation: 0.1, isStatic: false }],
       glyphCount: 3,
       goalState: 'playing',
     });
