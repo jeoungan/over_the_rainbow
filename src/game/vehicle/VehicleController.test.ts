@@ -24,4 +24,8 @@ describe('VehicleController', () => {
   it('returns no horizontal force without direction input', () => {
     expect(getVehicleDrive(VEHICLES.smallCar, 'none', 0).forceX).toBe(0);
   });
+
+  it('returns no horizontal force while airborne', () => {
+    expect(getVehicleDrive(VEHICLES.bicycle, 'right', 0, false).forceX).toBe(0);
+  });
 });

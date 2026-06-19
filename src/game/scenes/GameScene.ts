@@ -14,6 +14,10 @@ const WORLD = { width: 1280, height: 720 };
 const DRIVE_FORCE_SCALE = 1.6;
 const E2E_QUERY_FLAG = 'e2e';
 
+type MatterCollisionEvent = {
+  pairs: Phaser.Types.Physics.Matter.MatterCollisionPair[];
+};
+
 export class GameScene extends Phaser.Scene {
   private stageIndex = 0;
   private stage: StageDefinition = STAGES[0];
@@ -35,6 +39,7 @@ export class GameScene extends Phaser.Scene {
   private groundGraphics?: Phaser.GameObjects.Graphics;
   private groundBodies: MatterJS.BodyType[] = [];
   private nextStageButton?: HTMLButtonElement;
+  private readonly playerSupportContacts = new Set<string>();
 
   constructor() {
     super('GameScene');
@@ -46,6 +51,7 @@ export class GameScene extends Phaser.Scene {
     this.ensureGeneratedTextures();
     this.drawBackground();
     this.loadStage(0);
+    this.setupMatterCollisionTracking();
     this.setupInput();
     this.buildUi();
     this.drawHud();
@@ -93,7 +99,12 @@ export class GameScene extends Phaser.Scene {
     if (this.goalState === 'playing') {
       const vehicle = VEHICLES[this.stage.vehicleKey];
       const direction = this.activeKeys.right ? 'right' : this.activeKeys.left ? 'left' : 'none';
-      const drive = getVehicleDrive(vehicle, direction, estimateSlopeDegrees(this.player.rotation));
+      const drive = getVehicleDrive(
+        vehicle,
+        direction,
+        estimateSlopeDegrees(this.player.rotation),
+        this.isPlayerSupported(),
+      );
       const body = this.player.body as MatterJS.BodyType;
 
       this.player.applyForce(new Phaser.Math.Vector2(drive.forceX * DRIVE_FORCE_SCALE, 0));
@@ -118,6 +129,57 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.drawHud();
+  }
+
+  private setupMatterCollisionTracking(): void {
+    const addSupportContacts = (event: MatterCollisionEvent) => this.updatePlayerSupportContacts(event, 'add');
+    const removeSupportContacts = (event: MatterCollisionEvent) => this.updatePlayerSupportContacts(event, 'delete');
+
+    this.matter.world.on('collisionstart', addSupportContacts);
+    this.matter.world.on('collisionactive', addSupportContacts);
+    this.matter.world.on('collisionend', removeSupportContacts);
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.matter.world.off('collisionstart', addSupportContacts);
+      this.matter.world.off('collisionactive', addSupportContacts);
+      this.matter.world.off('collisionend', removeSupportContacts);
+    });
+  }
+
+  private updatePlayerSupportContacts(event: MatterCollisionEvent, action: 'add' | 'delete'): void {
+    for (const pair of event.pairs) {
+      if (!this.isPlayerSupportPair(pair)) continue;
+
+      if (action === 'add') {
+        this.playerSupportContacts.add(pair.id);
+      } else {
+        this.playerSupportContacts.delete(pair.id);
+      }
+    }
+  }
+
+  private isPlayerSupported(): boolean {
+    return this.playerSupportContacts.size > 0;
+  }
+
+  private isPlayerSupportPair(pair: Phaser.Types.Physics.Matter.MatterCollisionPair): boolean {
+    return (
+      (this.isPlayerBody(pair.bodyA) && this.isSupportBody(pair.bodyB)) ||
+      (this.isPlayerBody(pair.bodyB) && this.isSupportBody(pair.bodyA))
+    );
+  }
+
+  private isPlayerBody(body: MatterJS.BodyType): boolean {
+    const playerBody = this.player?.body as MatterJS.BodyType | undefined;
+    return Boolean(playerBody && (body === playerBody || body.parent === playerBody));
+  }
+
+  private isSupportBody(body: MatterJS.BodyType): boolean {
+    return this.hasSupportLabel(body) || Boolean(body.parent && this.hasSupportLabel(body.parent));
+  }
+
+  private hasSupportLabel(body: MatterJS.BodyType): boolean {
+    return body.label.startsWith('ground:') || body.label.startsWith('glyph:');
   }
 
   private setupInput(): void {
@@ -324,6 +386,7 @@ export class GameScene extends Phaser.Scene {
     this.glyphCount = 0;
     this.activeKeys.left = false;
     this.activeKeys.right = false;
+    this.playerSupportContacts.clear();
     this.player?.destroy();
     this.drawStageTerrain();
 
@@ -357,8 +420,9 @@ export class GameScene extends Phaser.Scene {
     const graphics = this.add.graphics();
     const isCanyon = this.stage.terrainTheme === 'canyon';
     const isTerrace = this.stage.terrainTheme === 'terrace';
-    const groundColor = isCanyon ? 0xb9c98f : isTerrace ? 0xc9b16f : 0x8fc89d;
-    const topColor = isCanyon ? 0xffe0a6 : isTerrace ? 0xf8d88d : 0xfff4c7;
+    const isBrokenBridge = this.stage.terrainTheme === 'brokenBridge';
+    const groundColor = isCanyon ? 0xb9c98f : isTerrace || isBrokenBridge ? 0xc9b16f : 0x8fc89d;
+    const topColor = isCanyon ? 0xffe0a6 : isTerrace || isBrokenBridge ? 0xf8d88d : 0xfff4c7;
 
     if (isCanyon) {
       this.drawCanyonGaps(graphics);
@@ -367,6 +431,11 @@ export class GameScene extends Phaser.Scene {
     if (isTerrace) {
       this.drawTerraceBackdrop(graphics);
       this.drawTerraceGaps(graphics);
+    }
+
+    if (isBrokenBridge) {
+      this.drawBrokenBridgeBackdrop(graphics);
+      this.drawBrokenBridgeGaps(graphics);
     }
 
     for (const segment of this.stage.groundSegments) {
@@ -379,6 +448,10 @@ export class GameScene extends Phaser.Scene {
 
       if (isTerrace) {
         this.drawTerraceFace(graphics, left, top, segment.width);
+      }
+
+      if (isBrokenBridge) {
+        this.drawBridgePier(graphics, left, top, segment.width);
       }
 
       const body = this.matter.add.rectangle(segment.x, segment.y, segment.width, segment.height, {
@@ -397,6 +470,16 @@ export class GameScene extends Phaser.Scene {
     graphics.fillTriangle(610, 650, 930, 390, 1250, 650);
     graphics.fillStyle(0x93b8bd, 0.12);
     graphics.fillTriangle(380, 650, 650, 500, 920, 650);
+  }
+
+  private drawBrokenBridgeBackdrop(graphics: Phaser.GameObjects.Graphics): void {
+    graphics.fillStyle(0x7aa0b6, 0.13);
+    graphics.fillTriangle(110, 650, 420, 455, 720, 650);
+    graphics.fillTriangle(680, 650, 995, 430, 1280, 650);
+    graphics.lineStyle(5, 0x7e6746, 0.18);
+    graphics.lineBetween(320, 600, 460, 560);
+    graphics.lineBetween(565, 575, 710, 530);
+    graphics.lineBetween(870, 520, 1010, 575);
   }
 
   private drawCanyonGaps(graphics: Phaser.GameObjects.Graphics): void {
@@ -444,6 +527,26 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private drawBrokenBridgeGaps(graphics: Phaser.GameObjects.Graphics): void {
+    const sortedSegments = [...this.stage.groundSegments].sort((a, b) => a.x - b.x);
+    for (let index = 0; index < sortedSegments.length - 1; index += 1) {
+      const leftSegment = sortedSegments[index];
+      const rightSegment = sortedSegments[index + 1];
+      const gapLeft = leftSegment.x + leftSegment.width / 2;
+      const gapRight = rightSegment.x - rightSegment.width / 2;
+      const gapWidth = gapRight - gapLeft;
+
+      if (gapWidth <= 0) continue;
+
+      const top = Math.min(leftSegment.y - leftSegment.height / 2, rightSegment.y - rightSegment.height / 2);
+      graphics.fillStyle(0x3b4d68, 0.22);
+      graphics.fillRect(gapLeft, top, gapWidth, WORLD.height - top);
+      graphics.lineStyle(2, 0xffefd0, 0.32);
+      graphics.lineBetween(gapLeft + 8, top + 10, gapLeft + gapWidth * 0.34, top + 30);
+      graphics.lineBetween(gapRight - 8, top + 10, gapRight - gapWidth * 0.34, top + 30);
+    }
+  }
+
   private drawTerraceFace(graphics: Phaser.GameObjects.Graphics, left: number, top: number, width: number): void {
     graphics.lineStyle(2, 0x7a5f38, 0.2);
     for (let y = top + 38; y < WORLD.height; y += 30) {
@@ -452,6 +555,15 @@ export class GameScene extends Phaser.Scene {
 
     graphics.lineStyle(2, 0xfff2bc, 0.26);
     graphics.lineBetween(left + 8, top + 16, left + width - 8, top + 10);
+  }
+
+  private drawBridgePier(graphics: Phaser.GameObjects.Graphics, left: number, top: number, width: number): void {
+    graphics.fillStyle(0x7e6746, 0.26);
+    const pierWidth = Math.min(42, Math.max(22, width / 5));
+    graphics.fillRect(left + 18, top + 22, pierWidth, WORLD.height - top);
+    graphics.fillRect(left + width - 18 - pierWidth, top + 22, pierWidth, WORLD.height - top);
+    graphics.lineStyle(2, 0xfff2bc, 0.28);
+    graphics.lineBetween(left + 10, top + 14, left + width - 10, top + 10);
   }
 
   private didFailStage(): boolean {
@@ -556,6 +668,7 @@ export class GameScene extends Phaser.Scene {
   }): void {
     if (!this.player) return;
 
+    this.playerSupportContacts.clear();
     this.player.setPosition(pose.x, pose.y);
     this.player.setVelocity(pose.vx ?? 0, pose.vy ?? 0);
     this.player.setRotation(pose.rotation ?? 0);

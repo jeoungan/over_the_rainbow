@@ -106,6 +106,22 @@ export const STAGES: StageDefinition[] = [
     ],
     allowLiveTyping: true,
   },
+  {
+    id: 'stage-6',
+    title: 'Stage 6',
+    hint: 'Link the broken bridge with steady slash ramps for the bicycle.',
+    vehicleKey: 'bicycle',
+    terrainTheme: 'brokenBridge',
+    spawn: { x: 130, y: 610 },
+    rainbow: { centerX: 1125, centerY: 245, width: 220, height: 150, passTopY: 200 },
+    groundSegments: [
+      { x: 200, y: 660, width: 400, height: 60 },
+      { x: 520, y: 635, width: 150, height: 52 },
+      { x: 790, y: 595, width: 170, height: 52 },
+      { x: 1120, y: 660, width: 320, height: 60 },
+    ],
+    allowLiveTyping: true,
+  },
 ];
 
 export function getStage(id: StageDefinition['id']): StageDefinition {

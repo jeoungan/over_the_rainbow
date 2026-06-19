@@ -8,8 +8,13 @@ export interface VehicleDrive {
   angularDamping: number;
 }
 
-export function getVehicleDrive(vehicle: VehicleTuning, direction: DriveDirection, slopeDegrees: number): VehicleDrive {
-  if (direction === 'none') {
+export function getVehicleDrive(
+  vehicle: VehicleTuning,
+  direction: DriveDirection,
+  slopeDegrees: number,
+  isSupported = true,
+): VehicleDrive {
+  if (direction === 'none' || !isSupported) {
     return {
       forceX: 0,
       maxSpeed: vehicle.maxSpeed,

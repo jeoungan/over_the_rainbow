@@ -76,6 +76,22 @@ test('keeps the vehicle still before Start even when A or D are pressed', async 
   expect(Math.abs(after.player.x - before.player.x)).toBeLessThan(2);
 });
 
+test('does not apply horizontal drive while the vehicle is airborne', async ({ page }) => {
+  await openForE2e(page);
+  await page.getByRole('button', { name: 'Start' }).click();
+  await page.evaluate(() => {
+    window.overTheRainbowTest?.placePlayer({ x: 220, y: 350, vx: 0, vy: 0 });
+  });
+
+  await page.keyboard.down('d');
+  await page.evaluate(() => window.advanceTime(300));
+  await page.keyboard.up('d');
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.goalState).toBe('playing');
+  expect(Math.abs(state.player.vx)).toBeLessThan(0.02);
+});
+
 test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in the scene', async ({ page }) => {
   await page.goto('/');
   await page.mouse.click(420, 340);
@@ -202,13 +218,26 @@ test('moves to stage 5 with a terraced walking challenge', async ({ page }) => {
   expect(screenshot.length).toBeGreaterThan(20_000);
 });
 
-test('wraps negative e2e stage indices safely', async ({ page }) => {
+test('moves to stage 6 with a broken bridge bicycle challenge', async ({ page }) => {
   await openForE2e(page);
-  await goToStage(page, -6);
+  await goToStage(page, 5);
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(state.stageId).toBe('stage-5');
-  expect(state.vehicleType).toBe('walking');
+  expect(state.stageId).toBe('stage-6');
+  expect(state.vehicleType).toBe('bicycle');
+  expect(state.goalState).toBe('editing');
+
+  const screenshot = await page.screenshot({ path: 'test-results/stage-6-broken-bridge.png' });
+  expect(screenshot.length).toBeGreaterThan(20_000);
+});
+
+test('wraps negative e2e stage indices safely', async ({ page }) => {
+  await openForE2e(page);
+  await goToStage(page, -7);
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.stageId).toBe('stage-6');
+  expect(state.vehicleType).toBe('bicycle');
 });
 
 test('can clear stage 5 with a gentle typed letter terrace', async ({ page }) => {
@@ -244,6 +273,47 @@ test('can clear stage 5 with a gentle typed letter terrace', async ({ page }) =>
   expect(state.goalState).toBe('won');
 
   const screenshot = await page.screenshot({ path: 'test-results/stage-5-clear.png' });
+  expect(screenshot.length).toBeGreaterThan(20_000);
+});
+
+test('can clear stage 6 with linked bridge letters', async ({ page }) => {
+  test.setTimeout(70_000);
+  await openForE2e(page);
+  await goToStage(page, 5);
+  await setGlyphSize(page, 144);
+
+  const initialState = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(initialState.stageId).toBe('stage-6');
+  expect(initialState.vehicleType).toBe('bicycle');
+
+  for (const [x, y] of [
+    [300, 648],
+    [390, 612],
+    [480, 576],
+    [570, 540],
+    [660, 504],
+    [750, 468],
+    [840, 432],
+    [930, 396],
+    [1020, 360],
+    [1110, 324],
+    [1200, 288],
+    [1260, 252],
+  ]) {
+    await page.mouse.click(x, y);
+    await page.keyboard.press('/');
+  }
+
+  await page.evaluate(() => window.advanceTime(900));
+  await page.getByRole('button', { name: 'Start' }).click();
+  await page.keyboard.down('d');
+  await page.evaluate(() => window.advanceTime(22000));
+  await page.keyboard.up('d');
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.goalState).toBe('won');
+
+  const screenshot = await page.screenshot({ path: 'test-results/stage-6-clear.png' });
   expect(screenshot.length).toBeGreaterThan(20_000);
 });
 

@@ -1,6 +1,6 @@
 export type VehicleKey = 'walking' | 'bicycle' | 'smallCar' | 'racingCar';
 export type StageId = `stage-${number}`;
-export type TerrainTheme = 'meadow' | 'canyon' | 'terrace';
+export type TerrainTheme = 'meadow' | 'canyon' | 'terrace' | 'brokenBridge';
 
 export interface VehicleTuning {
   key: VehicleKey;

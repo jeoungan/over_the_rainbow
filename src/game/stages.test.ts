@@ -21,11 +21,19 @@ describe('stage and vehicle data', () => {
       ['stage-3', 'bicycle'],
       ['stage-4', 'smallCar'],
       ['stage-5', 'walking'],
+      ['stage-6', 'bicycle'],
     ]);
   });
 
   it('labels the playable stages by stage number', () => {
-    expect(STAGES.map((stage) => stage.title)).toEqual(['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5']);
+    expect(STAGES.map((stage) => stage.title)).toEqual([
+      'Stage 1',
+      'Stage 2',
+      'Stage 3',
+      'Stage 4',
+      'Stage 5',
+      'Stage 6',
+    ]);
   });
 
   it('allows text summoning after movement in every stage', () => {
@@ -87,6 +95,21 @@ describe('stage and vehicle data', () => {
 
     expect(stage5.rainbow.centerX - stage5.spawn.x).toBeGreaterThan(stage4.rainbow.centerX - stage4.spawn.x);
     expect(stage5.rainbow.passTopY).toBeLessThan(stage4.rainbow.passTopY);
+  });
+
+  it('adds a broken bridge bicycle stage with multiple disconnected supports', () => {
+    const stage5 = getStage('stage-5');
+    const stage6 = getStage('stage-6');
+    const [leftGround, lowPier, highPier, rightGround] = stage6.groundSegments;
+
+    expect(stage6.vehicleKey).toBe('bicycle');
+    expect(stage6.terrainTheme).toBe('brokenBridge');
+    expect(stage6.rainbow.centerX - stage6.spawn.x).toBeGreaterThan(stage5.rainbow.centerX - stage5.spawn.x);
+    expect(stage6.rainbow.passTopY).toBeLessThanOrEqual(stage5.rainbow.passTopY);
+    expect(stage6.groundSegments).toHaveLength(4);
+    expect(lowPier.y).toBeGreaterThan(highPier.y);
+    expect(rightGround.x - rightGround.width / 2).toBeGreaterThan(highPier.x + highPier.width / 2);
+    expect(leftGround.x + leftGround.width / 2).toBeLessThan(lowPier.x - lowPier.width / 2);
   });
 
   it('retrieves a stage by id', () => {
