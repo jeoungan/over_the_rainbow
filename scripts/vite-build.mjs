@@ -2,13 +2,39 @@ import { build } from 'vite';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-await build({
-  root: process.cwd(),
-  configFile: false,
-  base: './',
-});
+const projectRoot = process.cwd();
+const sourceIndexPath = resolve(projectRoot, 'index.html');
+const originalIndexHtml = await readFile(sourceIndexPath, 'utf8');
 
-const distDir = resolve(process.cwd(), 'dist');
+try {
+  await writeFile(
+    sourceIndexPath,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>over the rainbow</title>
+  </head>
+  <body>
+    <div id="game-root"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+`,
+    'utf8',
+  );
+
+  await build({
+    root: projectRoot,
+    configFile: false,
+    base: './',
+  });
+} finally {
+  await writeFile(sourceIndexPath, originalIndexHtml, 'utf8');
+}
+
+const distDir = resolve(projectRoot, 'dist');
 const indexPath = resolve(distDir, 'index.html');
 let html = await readFile(indexPath, 'utf8');
 

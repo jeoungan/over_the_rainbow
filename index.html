@@ -7,6 +7,22 @@
   </head>
   <body>
     <div id="game-root"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <script>
+      (() => {
+        const path = window.location.pathname.replace(/\\/g, '/').toLowerCase();
+
+        if (window.location.protocol === 'file:') {
+          if (!path.endsWith('/dist/index.html')) {
+            window.location.replace(new URL('./dist/index.html', window.location.href).href);
+          }
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.type = 'module';
+        script.src = '/src/main.ts';
+        document.body.appendChild(script);
+      })();
+    </script>
   </body>
 </html>
