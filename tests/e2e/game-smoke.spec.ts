@@ -35,6 +35,16 @@ test('renders the game canvas and exposes text state', async ({ page }) => {
   expect(state.goalState).toBe('editing');
 });
 
+test('loads the polished side-view art background', async ({ page }) => {
+  await page.goto('/');
+  const backgroundImage = await page.evaluate(() => getComputedStyle(document.querySelector<HTMLElement>('#game-root')!).backgroundImage);
+  expect(backgroundImage).toContain('over-the-rainbow-sideview-background');
+
+  await page.waitForTimeout(1100);
+  const screenshot = await page.screenshot({ path: 'test-results/polished-art-background.png' });
+  expect(screenshot.length).toBeGreaterThan(80_000);
+});
+
 test('does not expose test stage controls in the default page', async ({ page }) => {
   await page.goto('/');
 

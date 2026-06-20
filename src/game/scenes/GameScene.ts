@@ -28,6 +28,7 @@ export class GameScene extends Phaser.Scene {
   private glyphCount = 0;
   private goalState: 'editing' | 'playing' | 'won' | 'failed' = 'editing';
   private player?: Phaser.Physics.Matter.Image;
+  private playerVisual?: Phaser.GameObjects.Image;
   private rainbowGraphics?: Phaser.GameObjects.Graphics;
   private passLine?: Phaser.GameObjects.Rectangle;
   private glyphs: Phaser.GameObjects.Text[] = [];
@@ -42,11 +43,13 @@ export class GameScene extends Phaser.Scene {
   private stageLabel?: Phaser.GameObjects.Text;
   private statusLabel?: Phaser.GameObjects.Text;
   private hintLabel?: Phaser.GameObjects.Text;
+  private logoGroup?: Phaser.GameObjects.Container;
   private groundGraphics?: Phaser.GameObjects.Graphics;
   private groundBodies: MatterJS.BodyType[] = [];
   private nextStageButton?: HTMLButtonElement;
   private suppressNextTextInput?: string;
   private isComposingText = false;
+  private rainbowReveal = 1;
 
   constructor() {
     super('GameScene');
@@ -117,6 +120,7 @@ export class GameScene extends Phaser.Scene {
 
     const previous = { ...this.previousPlayerPosition };
     this.previousPlayerPosition = { x: this.player.x, y: this.player.y };
+    this.updateVehicleArt();
 
     if (this.goalState === 'playing') {
       const vehicle = VEHICLES[this.stage.vehicleKey];
@@ -363,54 +367,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private ensureGeneratedTextures(): void {
-    this.createGeneratedTexture('vehicle-walking', 48, 68, (graphics) => {
-      graphics.fillStyle(0xfff2c2, 1);
-      graphics.fillCircle(24, 14, 10);
-      graphics.lineStyle(6, 0x2d3e6f, 1);
-      graphics.lineBetween(24, 27, 24, 45);
-      graphics.lineBetween(24, 34, 12, 42);
-      graphics.lineBetween(24, 34, 36, 42);
-      graphics.lineBetween(24, 45, 14, 62);
-      graphics.lineBetween(24, 45, 35, 62);
-    });
+    for (let frame = 0; frame < 4; frame += 1) {
+      this.createGeneratedTexture(`vehicle-walking-${frame}`, 80, 92, (graphics) => this.drawWalkingVehicleTexture(graphics, frame));
+      this.createGeneratedTexture(`vehicle-bicycle-${frame}`, 126, 76, (graphics) => this.drawBicycleVehicleTexture(graphics, frame));
+      this.createGeneratedTexture(`vehicle-smallCar-${frame}`, 122, 70, (graphics) => this.drawSmallCarVehicleTexture(graphics, frame));
+      this.createGeneratedTexture(`vehicle-racingCar-${frame}`, 146, 66, (graphics) => this.drawRacingCarVehicleTexture(graphics, frame));
+    }
 
-    this.createGeneratedTexture('vehicle-bicycle', 88, 48, (graphics) => {
-      graphics.lineStyle(5, 0x27365f, 1);
-      graphics.strokeCircle(22, 33, 13);
-      graphics.strokeCircle(66, 33, 13);
-      graphics.lineStyle(4, 0x4fb0a0, 1);
-      graphics.lineBetween(22, 33, 42, 16);
-      graphics.lineBetween(42, 16, 66, 33);
-      graphics.lineBetween(22, 33, 47, 33);
-      graphics.lineBetween(47, 33, 42, 16);
-      graphics.lineStyle(4, 0x27365f, 1);
-      graphics.lineBetween(42, 16, 40, 8);
-      graphics.lineBetween(55, 15, 68, 15);
-    });
-
-    this.createGeneratedTexture('vehicle-smallCar', 96, 48, (graphics) => {
-      graphics.fillStyle(0xf5f7ff, 1);
-      graphics.fillRoundedRect(12, 16, 72, 22, 8);
-      graphics.fillStyle(0x6dbdd6, 1);
-      graphics.fillRoundedRect(34, 7, 28, 18, 6);
-      graphics.fillStyle(0x253252, 1);
-      graphics.fillCircle(28, 39, 8);
-      graphics.fillCircle(70, 39, 8);
-      graphics.fillStyle(0xffc857, 1);
-      graphics.fillCircle(83, 25, 4);
-    });
-
-    this.createGeneratedTexture('vehicle-racingCar', 112, 44, (graphics) => {
-      graphics.fillStyle(0xf26b8a, 1);
-      graphics.fillTriangle(10, 31, 48, 10, 102, 31);
-      graphics.fillRoundedRect(28, 18, 64, 16, 7);
-      graphics.fillStyle(0xfff4c7, 1);
-      graphics.fillTriangle(54, 13, 72, 20, 44, 22);
-      graphics.fillStyle(0x232b48, 1);
-      graphics.fillCircle(34, 34, 7);
-      graphics.fillCircle(82, 34, 7);
-      graphics.fillStyle(0xffffff, 0.7);
-      graphics.fillRect(102, 25, 6, 3);
+    this.createGeneratedTexture('vehicle-walking', 80, 92, (graphics) => this.drawWalkingVehicleTexture(graphics, 0));
+    this.createGeneratedTexture('vehicle-bicycle', 126, 76, (graphics) => this.drawBicycleVehicleTexture(graphics, 0));
+    this.createGeneratedTexture('vehicle-smallCar', 122, 70, (graphics) => this.drawSmallCarVehicleTexture(graphics, 0));
+    this.createGeneratedTexture('vehicle-racingCar', 146, 66, (graphics) => this.drawRacingCarVehicleTexture(graphics, 0));
+    this.createGeneratedTexture('vehicle-hitbox', 64, 40, (graphics) => {
+      graphics.fillStyle(0xffffff, 1);
+      graphics.fillRoundedRect(0, 0, 64, 40, 8);
     });
   }
 
@@ -428,33 +398,159 @@ export class GameScene extends Phaser.Scene {
     graphics.destroy();
   }
 
-  private drawBackground(): void {
-    this.add.rectangle(WORLD.width / 2, 160, WORLD.width, 320, 0xd7e9fb);
-    this.add.rectangle(WORLD.width / 2, 430, WORLD.width, 220, 0xe8edf5);
-    this.add.rectangle(WORLD.width / 2, 640, WORLD.width, 160, 0xcfe6d2);
+  private drawWalkingVehicleTexture(graphics: Phaser.GameObjects.Graphics, frame: number): void {
+    const step = Math.sin((frame / 4) * Math.PI * 2);
+    const opposite = Math.sin(((frame + 2) / 4) * Math.PI * 2);
+    const hip = { x: 42, y: 58 };
 
-    const graphics = this.add.graphics();
-    graphics.fillStyle(0x8aa7b7, 0.18);
-    graphics.fillTriangle(40, 640, 260, 430, 480, 640);
-    graphics.fillTriangle(350, 640, 620, 390, 900, 640);
-    graphics.fillTriangle(760, 640, 1040, 410, 1280, 640);
-    graphics.fillStyle(0x5f7f8f, 0.12);
-    graphics.fillTriangle(0, 640, 180, 505, 340, 640);
-    graphics.fillTriangle(520, 640, 760, 500, 980, 640);
-    graphics.fillTriangle(930, 640, 1155, 500, 1280, 640);
-    graphics.lineStyle(2, 0xffffff, 0.35);
-    graphics.lineBetween(0, 372, WORLD.width, 372);
-
-    this.drawCloudCluster(240, 125, 1);
-    this.drawCloudCluster(900, 92, 1.2);
-    this.drawCloudCluster(1110, 162, 0.7);
+    graphics.fillStyle(0x1b2948, 0.2);
+    graphics.fillEllipse(42, 84, 46, 10);
+    graphics.fillStyle(0x7a4b2a, 1);
+    graphics.fillRoundedRect(18, 29, 18, 32, 7);
+    graphics.fillStyle(0x3a2418, 1);
+    graphics.fillRoundedRect(22, 25, 19, 34, 8);
+    graphics.fillStyle(0xf6c18b, 1);
+    graphics.fillCircle(40, 19, 12);
+    graphics.fillStyle(0x5b321e, 1);
+    graphics.fillCircle(36, 12, 9);
+    graphics.fillCircle(45, 12, 7);
+    graphics.fillStyle(0x143f75, 1);
+    graphics.fillRoundedRect(28, 30, 28, 32, 10);
+    graphics.fillStyle(0x2e83c7, 1);
+    graphics.fillRoundedRect(31, 32, 21, 27, 7);
+    graphics.lineStyle(4, 0xf6c18b, 1);
+    graphics.lineBetween(31, 40, 22 - step * 7, 53 + step * 2);
+    graphics.lineBetween(53, 40, 62 + step * 7, 52 - step * 2);
+    graphics.lineStyle(6, 0x26334f, 1);
+    graphics.lineBetween(hip.x - 3, hip.y, 28 - step * 13, 77);
+    graphics.lineBetween(hip.x + 3, hip.y, 56 - opposite * 13, 77);
+    graphics.lineStyle(5, 0xc24132, 1);
+    graphics.lineBetween(25 - step * 13, 80, 38 - step * 13, 80);
+    graphics.lineBetween(53 - opposite * 13, 80, 66 - opposite * 13, 80);
   }
 
-  private drawCloudCluster(x: number, y: number, scale: number): void {
-    const cloudColor = 0xffffff;
-    this.add.ellipse(x, y, 185 * scale, 48 * scale, cloudColor, 0.55);
-    this.add.ellipse(x + 72 * scale, y + 10 * scale, 150 * scale, 42 * scale, cloudColor, 0.42);
-    this.add.ellipse(x - 58 * scale, y + 8 * scale, 120 * scale, 36 * scale, cloudColor, 0.38);
+  private drawBicycleVehicleTexture(graphics: Phaser.GameObjects.Graphics, frame: number): void {
+    this.drawWheel(graphics, 30, 53, 18, frame);
+    this.drawWheel(graphics, 96, 53, 18, frame + 1);
+    graphics.lineStyle(5, 0x0d5b9d, 1);
+    graphics.lineBetween(30, 53, 58, 27);
+    graphics.lineBetween(58, 27, 96, 53);
+    graphics.lineBetween(30, 53, 67, 53);
+    graphics.lineBetween(67, 53, 58, 27);
+    graphics.lineStyle(4, 0x16294d, 1);
+    graphics.lineBetween(58, 27, 56, 15);
+    graphics.lineBetween(76, 26, 101, 21);
+    graphics.lineBetween(73, 25, 81, 16);
+    graphics.fillStyle(0x26334f, 1);
+    graphics.fillRoundedRect(48, 9, 21, 7, 4);
+    graphics.fillStyle(0xffffff, 0.55);
+    graphics.fillCircle(64, 48, 5);
+  }
+
+  private drawSmallCarVehicleTexture(graphics: Phaser.GameObjects.Graphics, frame: number): void {
+    graphics.fillStyle(0x1b2948, 0.2);
+    graphics.fillEllipse(62, 62, 86, 12);
+    graphics.fillStyle(0xf6c04f, 1);
+    graphics.fillRoundedRect(16, 29, 90, 27, 12);
+    graphics.fillStyle(0xffd879, 1);
+    graphics.fillRoundedRect(39, 14, 37, 25, 10);
+    graphics.fillStyle(0x9ed8f0, 0.9);
+    graphics.fillRoundedRect(45, 18, 24, 18, 6);
+    graphics.fillStyle(0xf08a38, 1);
+    graphics.fillCircle(103, 40, 5);
+    this.drawWheel(graphics, 36, 55, 11, frame);
+    this.drawWheel(graphics, 87, 55, 11, frame + 1);
+    graphics.lineStyle(2, 0x9a641c, 0.45);
+    graphics.strokeRoundedRect(18, 31, 85, 23, 10);
+  }
+
+  private drawRacingCarVehicleTexture(graphics: Phaser.GameObjects.Graphics, frame: number): void {
+    graphics.fillStyle(0x1b2948, 0.2);
+    graphics.fillEllipse(72, 58, 104, 10);
+    graphics.fillStyle(0xd6283b, 1);
+    graphics.fillTriangle(9, 47, 62, 20, 137, 46);
+    graphics.fillRoundedRect(30, 32, 87, 18, 8);
+    graphics.fillStyle(0xff5968, 1);
+    graphics.fillTriangle(37, 31, 65, 14, 95, 31);
+    graphics.fillStyle(0x9ed8f0, 0.85);
+    graphics.fillTriangle(63, 18, 87, 31, 49, 31);
+    graphics.fillStyle(0x1f2746, 1);
+    graphics.fillTriangle(106, 29, 131, 20, 125, 33);
+    this.drawWheel(graphics, 43, 51, 10, frame);
+    this.drawWheel(graphics, 104, 51, 10, frame + 1);
+    graphics.fillStyle(0xffffff, 0.78);
+    graphics.fillRoundedRect(130, 41, 8, 4, 2);
+  }
+
+  private drawWheel(graphics: Phaser.GameObjects.Graphics, x: number, y: number, radius: number, frame: number): void {
+    graphics.fillStyle(0x151a2c, 1);
+    graphics.fillCircle(x, y, radius);
+    graphics.fillStyle(0x4a536b, 1);
+    graphics.fillCircle(x, y, radius * 0.68);
+    graphics.fillStyle(0xdde8f0, 1);
+    graphics.fillCircle(x, y, radius * 0.26);
+    graphics.lineStyle(2, 0xf7fbff, 0.75);
+    for (let index = 0; index < 4; index += 1) {
+      const angle = ((frame + index) / 4) * Math.PI * 2;
+      graphics.lineBetween(x, y, x + Math.cos(angle) * radius * 0.62, y + Math.sin(angle) * radius * 0.62);
+    }
+  }
+
+  private drawBackground(): void {
+    const graphics = this.add.graphics();
+    graphics.setDepth(-18);
+    graphics.fillStyle(0xb8e7ff, 0.1);
+    graphics.fillRect(0, 0, WORLD.width, WORLD.height);
+    graphics.fillStyle(0xffffff, 0.18);
+    graphics.fillEllipse(640, 640, 1100, 120);
+    graphics.fillStyle(0x8dd28b, 0.18);
+    graphics.fillEllipse(280, 675, 640, 120);
+    graphics.fillEllipse(1000, 670, 680, 130);
+    this.drawLogo();
+  }
+
+  private drawLogo(): void {
+    this.logoGroup?.destroy(true);
+
+    const group = this.add.container(WORLD.width / 2, 34);
+    group.setDepth(18);
+
+    const halo = this.add.graphics();
+    halo.fillStyle(0xffffff, 0.34);
+    halo.fillRoundedRect(-270, -22, 540, 54, 18);
+    halo.lineStyle(4, 0xffffff, 0.46);
+    halo.beginPath();
+    halo.arc(-152, 35, 46, Phaser.Math.DegToRad(205), Phaser.Math.DegToRad(335), false);
+    halo.strokePath();
+    halo.lineStyle(4, 0xf26b8a, 0.8);
+    halo.beginPath();
+    halo.arc(152, 35, 46, Phaser.Math.DegToRad(205), Phaser.Math.DegToRad(335), false);
+    halo.strokePath();
+
+    const shadow = this.add
+      .text(3, 4, 'OVER THE RAINBOW', {
+        fontFamily: 'Georgia, "Times New Roman", serif',
+        fontSize: '31px',
+        fontStyle: 'bold',
+        color: '#7c3d2a',
+        stroke: '#ffffff',
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5, 0.5)
+      .setAlpha(0.38);
+    const title = this.add
+      .text(0, 0, 'OVER THE RAINBOW', {
+        fontFamily: 'Georgia, "Times New Roman", serif',
+        fontSize: '31px',
+        fontStyle: 'bold',
+        color: '#ffd75a',
+        stroke: '#8a4730',
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5, 0.5);
+
+    group.add([halo, shadow, title]);
+    this.logoGroup = group;
   }
 
   private loadStage(index: number): void {
@@ -463,10 +559,11 @@ export class GameScene extends Phaser.Scene {
     this.goalState = 'editing';
     this.glyphCount = 0;
     this.player?.destroy();
+    this.playerVisual?.destroy();
     this.drawStageTerrain();
 
     const vehicle = VEHICLES[this.stage.vehicleKey];
-    this.player = this.matter.add.image(this.stage.spawn.x, this.stage.spawn.y, `vehicle-${vehicle.key}`, undefined, {
+    this.player = this.matter.add.image(this.stage.spawn.x, this.stage.spawn.y, 'vehicle-hitbox', undefined, {
       label: `vehicle:${vehicle.key}`,
       isStatic: true,
       mass: vehicle.mass,
@@ -476,6 +573,19 @@ export class GameScene extends Phaser.Scene {
     });
     const displaySize = this.getVehicleDisplaySize(vehicle.key);
     this.player.setDisplaySize(displaySize.width, displaySize.height);
+    this.player.setRectangle(displaySize.width, displaySize.height, {
+      label: `vehicle:${vehicle.key}`,
+      isStatic: true,
+      mass: vehicle.mass,
+      friction: 0.12,
+      frictionAir: 0.004,
+      restitution: 0.08,
+    });
+    this.player.setAlpha(0);
+    this.player.setDepth(8);
+    this.playerVisual = this.add.image(this.stage.spawn.x, this.stage.spawn.y, `vehicle-${vehicle.key}-0`);
+    this.playerVisual.setDisplaySize(displaySize.width, displaySize.height);
+    this.playerVisual.setDepth(8);
     this.previousPlayerPosition = { x: this.stage.spawn.x, y: this.stage.spawn.y };
 
     this.drawRainbow();
@@ -483,10 +593,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getVehicleDisplaySize(vehicleKey: VehicleKey): { width: number; height: number } {
-    if (vehicleKey === 'walking') return { width: 38, height: 54 };
-    if (vehicleKey === 'bicycle') return { width: 76, height: 42 };
-    if (vehicleKey === 'smallCar') return { width: 76, height: 38 };
-    return { width: 88, height: 34 };
+    if (vehicleKey === 'walking') return { width: 44, height: 58 };
+    if (vehicleKey === 'bicycle') return { width: 86, height: 50 };
+    if (vehicleKey === 'smallCar') return { width: 84, height: 48 };
+    return { width: 104, height: 44 };
+  }
+
+  private updateVehicleArt(): void {
+    if (!this.player || !this.playerVisual) return;
+
+    const body = this.player.body as MatterJS.BodyType | undefined;
+    const speed = Math.abs(body?.velocity.x ?? 0);
+    const isMoving = this.goalState === 'playing' && speed > 0.12;
+    const frameDuration = this.stage.vehicleKey === 'walking' ? 150 : 90;
+    const frame = isMoving ? Math.floor((this.time.now + this.player.x * 18) / frameDuration) % 4 : 0;
+    const key = `vehicle-${this.stage.vehicleKey}-${frame}`;
+
+    if (this.textures.exists(key) && this.playerVisual.texture.key !== key) {
+      const displaySize = this.getVehicleDisplaySize(this.stage.vehicleKey);
+      this.playerVisual.setTexture(key);
+      this.playerVisual.setDisplaySize(displaySize.width, displaySize.height);
+    }
+
+    this.playerVisual.setPosition(this.player.x, this.player.y);
+    this.playerVisual.setRotation(this.player.rotation);
   }
 
   private drawStageTerrain(): void {
@@ -495,6 +625,7 @@ export class GameScene extends Phaser.Scene {
     this.groundBodies = [];
 
     const graphics = this.add.graphics();
+    graphics.setDepth(1);
     const isCanyon = this.stage.terrainTheme === 'canyon';
     const isTerrace = this.stage.terrainTheme === 'terrace';
     const isBrokenBridge = this.stage.terrainTheme === 'brokenBridge';
@@ -522,6 +653,7 @@ export class GameScene extends Phaser.Scene {
       graphics.fillRect(left, top, segment.width, WORLD.height - top);
       graphics.fillStyle(topColor, 0.45);
       graphics.fillRect(left, top, segment.width, 24);
+      this.drawGroundSegmentDetails(graphics, left, top, segment.width, isCanyon, isTerrace || isBrokenBridge);
 
       if (isTerrace) {
         this.drawTerraceFace(graphics, left, top, segment.width);
@@ -539,6 +671,38 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.groundGraphics = graphics;
+  }
+
+  private drawGroundSegmentDetails(
+    graphics: Phaser.GameObjects.Graphics,
+    left: number,
+    top: number,
+    width: number,
+    isCanyon: boolean,
+    isDry: boolean,
+  ): void {
+    graphics.lineStyle(4, isCanyon ? 0x8f6c42 : isDry ? 0x9d7a3e : 0x5fa974, 0.55);
+    graphics.lineBetween(left, top + 3, left + width, top + 3);
+
+    for (let x = left + 16; x < left + width - 8; x += 34) {
+      const sway = Math.sin(x * 0.05) * 4;
+      const grassColor = isCanyon ? 0x9baa60 : isDry ? 0xa9a85f : 0x5aae6e;
+      graphics.lineStyle(2, grassColor, 0.62);
+      graphics.lineBetween(x, top + 7, x + sway, top - 9);
+      graphics.lineBetween(x + 5, top + 9, x + 2 + sway * 0.6, top - 5);
+
+      if (!isCanyon && x % 68 < 35) {
+        graphics.fillStyle(x % 3 === 0 ? 0xffe47a : 0xf68db4, 0.78);
+        graphics.fillCircle(x + 10, top - 5, 3);
+        graphics.fillStyle(0xffffff, 0.66);
+        graphics.fillCircle(x + 14, top - 7, 2);
+      }
+    }
+
+    graphics.fillStyle(isCanyon ? 0x56413a : 0x6d7b4a, 0.22);
+    for (let x = left + 26; x < left + width - 18; x += 82) {
+      graphics.fillEllipse(x, top + 36 + Math.sin(x) * 4, 24, 9);
+    }
   }
 
   private drawTerraceBackdrop(graphics: Phaser.GameObjects.Graphics): void {
@@ -862,6 +1026,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setVelocity(pose.vx ?? 0, pose.vy ?? 0);
     this.player.setRotation(pose.rotation ?? 0);
     this.player.setAngularVelocity(0);
+    this.updateVehicleArt();
     this.previousPlayerPosition = {
       x: pose.previousX ?? pose.x,
       y: pose.previousY ?? pose.y,
@@ -986,22 +1151,76 @@ export class GameScene extends Phaser.Scene {
 
     const { rainbow } = this.stage;
     const graphics = this.add.graphics();
-    const colors = [0xf26b8a, 0xffc857, 0x63c77a, 0x5aa7ff, 0x9b6bff];
-    const radius = rainbow.width / 2;
+    graphics.setDepth(5);
+    this.rainbowGraphics = graphics;
+    this.passLine = this.add.rectangle(rainbow.centerX, rainbow.passTopY, rainbow.width, 3, 0xffffff, 0.35).setDepth(4);
+    this.rainbowReveal = 0;
+    this.renderRainbow(0);
+    this.tweens.killTweensOf(this);
+    this.tweens.add({
+      targets: this,
+      rainbowReveal: 1,
+      duration: 980,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => this.renderRainbow(this.rainbowReveal),
+      onComplete: () => this.renderRainbow(1),
+    });
+  }
+
+  private renderRainbow(reveal: number): void {
+    const graphics = this.rainbowGraphics;
+    if (!graphics) return;
+
+    const { rainbow } = this.stage;
+    const visualWidth = rainbow.width * 1.46;
+    const radius = visualWidth / 2;
+    const centerAngle = 270;
+    const span = 142 * Phaser.Math.Clamp(reveal, 0, 1);
+    const startAngle = Phaser.Math.DegToRad(centerAngle - span / 2);
+    const endAngle = Phaser.Math.DegToRad(centerAngle + span / 2);
+    const colors = [0xf34d6a, 0xff8a3d, 0xffd84f, 0x63d76e, 0x46c5ff, 0x597cff, 0x9b65ff];
+
+    graphics.clear();
+    graphics.lineStyle(34, 0xffffff, 0.18 * reveal);
+    graphics.beginPath();
+    graphics.arc(rainbow.centerX, rainbow.centerY + 7, radius + 8, startAngle, endAngle, false);
+    graphics.strokePath();
+
     colors.forEach((color, index) => {
-      graphics.lineStyle(8, color, 0.95);
+      graphics.lineStyle(10, color, 0.96);
       graphics.beginPath();
-      graphics.arc(
-        rainbow.centerX,
-        rainbow.centerY + index * 6,
-        radius - index * 3,
-        Phaser.Math.DegToRad(205),
-        Phaser.Math.DegToRad(335),
-        false,
-      );
+      graphics.arc(rainbow.centerX, rainbow.centerY + index * 5, radius - index * 7, startAngle, endAngle, false);
       graphics.strokePath();
     });
-    this.rainbowGraphics = graphics;
-    this.passLine = this.add.rectangle(rainbow.centerX, rainbow.passTopY, rainbow.width, 4, 0xffffff, 0.45);
+
+    if (reveal > 0.82) {
+      const cloudAlpha = Phaser.Math.Clamp((reveal - 0.82) / 0.18, 0, 1);
+      this.drawRainbowCloud(graphics, rainbow.centerX - radius * 0.82, rainbow.centerY + 28, cloudAlpha);
+      this.drawRainbowCloud(graphics, rainbow.centerX + radius * 0.82, rainbow.centerY + 28, cloudAlpha);
+    }
+
+    const sparkleAlpha = 0.45 * reveal;
+    graphics.fillStyle(0xffffff, sparkleAlpha);
+    for (const sparkle of [
+      { x: -0.42, y: -0.2, size: 5 },
+      { x: -0.18, y: -0.46, size: 3 },
+      { x: 0.24, y: -0.42, size: 4 },
+      { x: 0.45, y: -0.08, size: 3 },
+    ]) {
+      const x = rainbow.centerX + sparkle.x * radius;
+      const y = rainbow.centerY + sparkle.y * rainbow.height;
+      graphics.fillTriangle(x, y - sparkle.size * 1.6, x + sparkle.size, y, x, y + sparkle.size * 1.6);
+      graphics.fillTriangle(x, y - sparkle.size * 1.6, x - sparkle.size, y, x, y + sparkle.size * 1.6);
+    }
+  }
+
+  private drawRainbowCloud(graphics: Phaser.GameObjects.Graphics, x: number, y: number, alpha: number): void {
+    graphics.fillStyle(0xffffff, 0.86 * alpha);
+    graphics.fillCircle(x - 28, y + 4, 22);
+    graphics.fillCircle(x, y - 5, 29);
+    graphics.fillCircle(x + 31, y + 6, 22);
+    graphics.fillEllipse(x, y + 17, 82, 28);
+    graphics.fillStyle(0xbcd7ee, 0.3 * alpha);
+    graphics.fillEllipse(x + 8, y + 20, 62, 12);
   }
 }

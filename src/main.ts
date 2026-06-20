@@ -13,7 +13,8 @@ new Phaser.Game({
   parent: root,
   width: 1280,
   height: 720,
-  backgroundColor: '#dcecff',
+  transparent: true,
+  backgroundColor: 'rgba(0, 0, 0, 0)',
   physics: {
     default: 'matter',
     matter: {

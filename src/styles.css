@@ -23,7 +23,10 @@ body {
 
 #game-root {
   position: relative;
-  background: #1f2a3f;
+  background:
+    linear-gradient(rgba(215, 238, 255, 0.08), rgba(255, 255, 255, 0.1)),
+    url("assets/art/over-the-rainbow-sideview-background.png") center / cover no-repeat,
+    #1f2a3f;
 }
 
 canvas {

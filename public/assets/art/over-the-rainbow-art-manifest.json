@@ -1,0 +1,20 @@
+{
+  "pipeline": {
+    "mapSkill": "generate2dmap",
+    "spriteSkill": "generate2dsprite",
+    "visualModel": "parallax_layers",
+    "runtimeObjectModel": "platform_objects",
+    "collisionModel": "coarse_shapes",
+    "engineTarget": "Phaser"
+  },
+  "runtimeAssets": {
+    "background": "assets/art/over-the-rainbow-sideview-background.png",
+    "vehicles": "Generated Phaser textures: walking, bicycle, smallCar, racingCar, 4 frames each",
+    "rainbow": "Generated Phaser graphics with center-out reveal animation",
+    "logo": "Generated Phaser text/graphics matching the sprite reference style"
+  },
+  "referenceAssets": {
+    "spriteLogoReference": "assets/art/over-the-rainbow-sprite-logo-reference.png",
+    "stageReference": "assets/art/over-the-rainbow-stage-reference.png"
+  }
+}
