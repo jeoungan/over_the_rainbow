@@ -74,7 +74,7 @@ test('keeps the vehicle still before Start even when A or D are pressed', async 
   expect(Math.abs(after.player.x - before.player.x)).toBeLessThan(2);
 });
 
-test('uses D for caret movement while the launched vehicle continues forward', async ({ page }) => {
+test('types D as text while the launched vehicle continues forward', async ({ page }) => {
   await openForE2e(page);
   await page.getByRole('button', { name: 'Start' }).click();
   await page.evaluate(() => {
@@ -82,14 +82,31 @@ test('uses D for caret movement while the launched vehicle continues forward', a
   });
   const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
 
-  await page.keyboard.down('d');
+  await page.keyboard.press('d');
   await page.evaluate(() => window.advanceTime(300));
-  await page.keyboard.up('d');
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(state.goalState).toBe('playing');
-  expect(state.caret.x).toBeGreaterThan(before.caret.x);
+  expect(state.glyphCount).toBe(before.glyphCount + 1);
+  expect(state.glyphs[state.glyphs.length - 1].char).toBe('d');
   expect(state.player.vx).toBeGreaterThan(0);
+});
+
+test('types WASD as letters and uses only arrows for caret movement', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(260, 300);
+  const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+
+  await page.keyboard.type('wasd');
+  let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.glyphCount).toBe(4);
+  expect(state.glyphs.map((glyph: { char: string }) => glyph.char).join('')).toBe('wasd');
+  expect(state.caret.y).toBeCloseTo(before.caret.y, 0);
+
+  await page.keyboard.press('ArrowUp');
+  state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.caret.y).toBeLessThan(before.caret.y);
+  expect(state.glyphCount).toBe(4);
 });
 
 test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in the scene', async ({ page }) => {
@@ -171,6 +188,50 @@ test('keeps up with a fast burst of typed text', async ({ page }) => {
   expect(state.glyphs.map((glyph: { char: string }) => glyph.char).join('')).toBe('rainbowtyping');
 });
 
+test('backspace returns the caret to the deleted glyph start', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(300, 300);
+
+  await page.keyboard.press('L');
+  const afterFirstGlyph = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  await page.keyboard.press('O');
+  const afterSecondGlyph = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(afterSecondGlyph.caret.x).toBeGreaterThan(afterFirstGlyph.caret.x);
+
+  await page.keyboard.press('Backspace');
+  const afterDelete = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(afterDelete.glyphCount).toBe(1);
+  expect(afterDelete.glyphs.map((glyph: { char: string }) => glyph.char).join('')).toBe('L');
+  expect(afterDelete.caret.x).toBeCloseTo(afterFirstGlyph.caret.x, 0);
+  expect(afterDelete.caret.y).toBeCloseTo(afterFirstGlyph.caret.y, 0);
+});
+
+test('can double-click to move the active typing cursor before spacing and release', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(260, 300);
+  await page.keyboard.press('A');
+  const first = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+
+  await page.mouse.dblclick(540, 250);
+  await page.keyboard.press('B');
+  const moved = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(moved.glyphCount).toBe(2);
+  expect(moved.glyphs[0].x).toBeCloseTo(first.glyphs[0].x, 0);
+  expect(moved.glyphs[1].x).toBeGreaterThan(530);
+  expect(moved.caret.y).toBeCloseTo(250, 0);
+
+  await page.keyboard.press('Space');
+  const afterSpace = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(afterSpace.caret.x).toBeGreaterThan(moved.caret.x);
+  expect(afterSpace.caret.y).toBeCloseTo(moved.caret.y, 0);
+
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => window.advanceTime(900));
+  const afterRelease = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(afterRelease.glyphs.every((glyph: { hasPhysics: boolean }) => glyph.hasPhysics)).toBe(true);
+  expect(afterRelease.glyphs[1].y).toBeGreaterThan(moved.glyphs[1].y + 60);
+});
+
 test('releases typed glyphs into physics when Enter is pressed', async ({ page }) => {
   await page.goto('/');
   await page.mouse.click(300, 240);
@@ -210,7 +271,7 @@ test('moves the typing cursor with keys, supports mixed sizes, and selects all t
   const initial = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
 
   await page.keyboard.press('ArrowRight');
-  await page.keyboard.press('w');
+  await page.keyboard.press('ArrowUp');
   const moved = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(moved.caret.x).toBeGreaterThan(initial.caret.x);
   expect(moved.caret.y).toBeLessThan(initial.caret.y);

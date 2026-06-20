@@ -2,13 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { createTextInputController } from './TextInputController';
 
 describe('TextInputController', () => {
-  it('maps WASD and arrow keys to caret movement', () => {
+  it('maps only arrow keys to caret movement', () => {
     const controller = createTextInputController();
-    expect(controller.keyDown({ key: 'A', ctrlKey: false, metaKey: false, repeat: false })).toEqual({ type: 'caretMove', dx: -1, dy: 0 });
+    expect(controller.keyDown({ key: 'A', ctrlKey: false, metaKey: false, repeat: false })).toEqual({ type: 'none' });
+    expect(controller.keyDown({ key: 'w', ctrlKey: false, metaKey: false, repeat: false })).toEqual({ type: 'none' });
     expect(controller.keyDown({ key: 'ArrowRight', ctrlKey: false, metaKey: false, repeat: true })).toEqual({
       type: 'caretMove',
       dx: 1,
       dy: 0,
+    });
+    expect(controller.keyDown({ key: 'ArrowUp', ctrlKey: false, metaKey: false, repeat: false })).toEqual({
+      type: 'caretMove',
+      dx: 0,
+      dy: -1,
     });
   });
 

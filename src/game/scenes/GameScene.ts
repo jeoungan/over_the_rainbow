@@ -6,7 +6,7 @@ import type { GlyphPlan } from '../glyph/GlyphPhysicsFactory';
 import { didPassOverRainbow } from '../goal/GoalDetector';
 import { createTextInputController } from '../input/TextInputController';
 import { STAGES, VEHICLES } from '../stages';
-import type { StageDefinition, VehicleKey } from '../types';
+import type { Point, StageDefinition, VehicleKey } from '../types';
 import { getVehicleDrive } from '../vehicle/VehicleController';
 import { estimateSlopeDegrees } from '../vehicle/SlopeEstimator';
 
@@ -33,6 +33,7 @@ export class GameScene extends Phaser.Scene {
   private glyphs: Phaser.GameObjects.Text[] = [];
   private readonly pendingGlyphs = new Set<Phaser.GameObjects.Text>();
   private readonly glyphPlans = new Map<Phaser.GameObjects.Text, GlyphPlan>();
+  private readonly glyphCaretStarts = new Map<Phaser.GameObjects.Text, Point>();
   private readonly selectedGlyphs = new Set<Phaser.GameObjects.Text>();
   private uiRoot?: HTMLDivElement;
   private textCapture?: HTMLTextAreaElement;
@@ -153,7 +154,7 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       this.caret.placeAt({ x: pointer.worldX, y: pointer.worldY });
       this.clearGlyphSelection();
-      this.focusTextCapture();
+      this.refocusTextCaptureAfterPointer();
     });
 
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: unknown[], _dx: number, dy: number) => {
@@ -241,6 +242,11 @@ export class GameScene extends Phaser.Scene {
     if (!this.textCapture || document.activeElement === this.textCapture) return;
 
     this.textCapture.focus({ preventScroll: true });
+  }
+
+  private refocusTextCaptureAfterPointer(): void {
+    this.focusTextCapture();
+    window.setTimeout(() => this.focusTextCapture(), 0);
   }
 
   private readonly handleStartClick = (): void => {
@@ -661,10 +667,10 @@ export class GameScene extends Phaser.Scene {
       },
     );
 
-    this.spawnGlyphFromPlan(plan, visualWidth);
+    this.spawnGlyphFromPlan(plan, visualWidth, caret.position);
   }
 
-  private spawnGlyphFromPlan(plan: GlyphPlan, visualWidth: number): void {
+  private spawnGlyphFromPlan(plan: GlyphPlan, visualWidth: number, caretStart: Point): void {
     const text = this.add.text(plan.origin.x, plan.origin.y - plan.size / 2, plan.char, {
       fontFamily: '"Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", Georgia, serif',
       fontSize: `${plan.size}px`,
@@ -676,6 +682,7 @@ export class GameScene extends Phaser.Scene {
     this.glyphs.push(text);
     this.pendingGlyphs.add(text);
     this.glyphPlans.set(text, plan);
+    this.glyphCaretStarts.set(text, { ...caretStart });
     this.glyphCount = this.glyphs.length;
     this.caret.advanceInline(visualWidth + Math.max(2, plan.size * LETTER_GAP_RATIO));
   }
@@ -776,9 +783,12 @@ export class GameScene extends Phaser.Scene {
 
     const glyph = this.glyphs.pop();
     if (glyph) {
+      const caretStart = this.glyphCaretStarts.get(glyph);
       this.pendingGlyphs.delete(glyph);
       this.glyphPlans.delete(glyph);
+      this.glyphCaretStarts.delete(glyph);
       glyph.destroy();
+      if (caretStart) this.caret.placeAt(caretStart);
     }
     this.glyphCount = this.glyphs.length;
   }
@@ -798,16 +808,21 @@ export class GameScene extends Phaser.Scene {
 
   private deleteSelectedGlyphs(): void {
     const selected = new Set(this.selectedGlyphs);
+    const firstSelected = this.glyphs.find((glyph) => selected.has(glyph));
+    const caretStart = firstSelected ? this.glyphCaretStarts.get(firstSelected) : undefined;
+
     this.glyphs = this.glyphs.filter((glyph) => {
       if (!selected.has(glyph)) return true;
 
       this.pendingGlyphs.delete(glyph);
       this.glyphPlans.delete(glyph);
+      this.glyphCaretStarts.delete(glyph);
       glyph.destroy();
       return false;
     });
     this.selectedGlyphs.clear();
     this.glyphCount = this.glyphs.length;
+    if (caretStart) this.caret.placeAt(caretStart);
   }
 
   private refreshGlyphSelectionStyles(): void {
@@ -858,6 +873,7 @@ export class GameScene extends Phaser.Scene {
     this.glyphs = [];
     this.pendingGlyphs.clear();
     this.glyphPlans.clear();
+    this.glyphCaretStarts.clear();
     this.selectedGlyphs.clear();
     this.glyphCount = 0;
   }

@@ -59,10 +59,10 @@ export function createTextInputController(): TextInputController {
 function getCaretMovement(key: string): { dx: number; dy: number } | undefined {
   const normalized = key.toLowerCase();
 
-  if (normalized === 'arrowleft' || normalized === 'a') return { dx: -1, dy: 0 };
-  if (normalized === 'arrowright' || normalized === 'd') return { dx: 1, dy: 0 };
-  if (normalized === 'arrowup' || normalized === 'w') return { dx: 0, dy: -1 };
-  if (normalized === 'arrowdown' || normalized === 's') return { dx: 0, dy: 1 };
+  if (normalized === 'arrowleft') return { dx: -1, dy: 0 };
+  if (normalized === 'arrowright') return { dx: 1, dy: 0 };
+  if (normalized === 'arrowup') return { dx: 0, dy: -1 };
+  if (normalized === 'arrowdown') return { dx: 0, dy: 1 };
 
   return undefined;
 }
