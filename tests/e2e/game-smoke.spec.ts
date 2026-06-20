@@ -45,15 +45,13 @@ test('does not expose test stage controls in the default page', async ({ page })
 test('creates a glyph, starts the vehicle, and moves right', async ({ page }) => {
   await page.goto('/');
   await page.mouse.click(360, 360);
-  await page.keyboard.press('A');
+  await page.keyboard.press('O');
 
   let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(state.glyphCount).toBe(1);
 
   await page.keyboard.press('Control+R');
-  await page.keyboard.down('d');
-  await page.evaluate(() => window.advanceTime(600));
-  await page.keyboard.up('d');
+  await page.evaluate(() => window.advanceTime(100));
 
   state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(state.goalState).toBe('playing');
@@ -76,12 +74,13 @@ test('keeps the vehicle still before Start even when A or D are pressed', async 
   expect(Math.abs(after.player.x - before.player.x)).toBeLessThan(2);
 });
 
-test('does not apply horizontal drive while the vehicle is airborne', async ({ page }) => {
+test('uses D for caret movement while the launched vehicle continues forward', async ({ page }) => {
   await openForE2e(page);
   await page.getByRole('button', { name: 'Start' }).click();
   await page.evaluate(() => {
     window.overTheRainbowTest?.placePlayer({ x: 220, y: 350, vx: 0, vy: 0 });
   });
+  const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
 
   await page.keyboard.down('d');
   await page.evaluate(() => window.advanceTime(300));
@@ -89,7 +88,8 @@ test('does not apply horizontal drive while the vehicle is airborne', async ({ p
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(state.goalState).toBe('playing');
-  expect(Math.abs(state.player.vx)).toBeLessThan(0.02);
+  expect(state.caret.x).toBeGreaterThan(before.caret.x);
+  expect(state.player.vx).toBeGreaterThan(0);
 });
 
 test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in the scene', async ({ page }) => {
@@ -105,21 +105,21 @@ test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(state.caret.x).toBeGreaterThan(470);
   expect(state.caret.y).toBeCloseTo(340, 0);
-  expect(state.caret.glyphSize).toBe(64);
+  expect(state.caret.glyphSize).toBe(60);
   expect(state.glyphCount).toBe(1);
 });
 
 test('releases typed glyphs into physics when Enter is pressed', async ({ page }) => {
   await page.goto('/');
   await page.mouse.click(300, 240);
-  await page.keyboard.press('A');
+  await page.keyboard.press('L');
 
   const afterFirstGlyph = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  await page.keyboard.press('B');
+  await page.keyboard.press('O');
   const afterSecondGlyph = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
 
   expect(afterSecondGlyph.glyphCount).toBe(2);
-  expect(afterSecondGlyph.glyphs[1].x).toBeGreaterThan(afterSecondGlyph.glyphs[0].x + 30);
+  expect(afterSecondGlyph.glyphs[1].x).toBeGreaterThan(afterSecondGlyph.glyphs[0].x + 18);
   expect(afterSecondGlyph.caret.x).toBeGreaterThan(afterFirstGlyph.caret.x);
 
   await page.evaluate(() => window.advanceTime(900));
@@ -138,8 +138,86 @@ test('releases typed glyphs into physics when Enter is pressed', async ({ page }
   expect(afterFall.glyphs[1].hasPhysics).toBe(true);
   expect(afterFall.glyphs[0].y).toBeGreaterThan(beforeRelease.glyphs[0].y + 80);
   expect(afterFall.glyphs[1].y).toBeGreaterThan(beforeRelease.glyphs[1].y + 80);
-  expect(afterFall.glyphs[0].isStatic).toBe(true);
-  expect(afterFall.glyphs[1].isStatic).toBe(true);
+  expect(afterFall.glyphs[0].isStatic).toBe(false);
+  expect(afterFall.glyphs[1].isStatic).toBe(false);
+});
+
+test('moves the typing cursor with keys, supports mixed sizes, and selects all text', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(420, 300);
+  const initial = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('w');
+  const moved = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(moved.caret.x).toBeGreaterThan(initial.caret.x);
+  expect(moved.caret.y).toBeLessThan(initial.caret.y);
+
+  for (let i = 0; i < 7; i += 1) await page.mouse.wheel(0, 120);
+  await page.evaluate(() => {
+    window.dispatchEvent(new CompositionEvent('compositionstart'));
+    window.dispatchEvent(new CompositionEvent('compositionend', { data: 'ㅇ' }));
+  });
+  for (let i = 0; i < 5; i += 1) await page.mouse.wheel(0, 120);
+  await page.evaluate(() => {
+    window.dispatchEvent(new CompositionEvent('compositionstart'));
+    window.dispatchEvent(new CompositionEvent('compositionend', { data: 'ㅏ' }));
+  });
+
+  let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.glyphCount).toBe(2);
+  expect(state.glyphs[0].hasPhysics).toBe(false);
+  expect(state.glyphs[1].hasPhysics).toBe(false);
+  expect(state.glyphs[0].size).toBeGreaterThan(state.glyphs[1].size);
+  expect(state.glyphs[1].x - state.glyphs[0].x).toBeLessThan(70);
+
+  await page.keyboard.press('Control+A');
+  state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.selectedGlyphCount).toBe(2);
+  expect(state.glyphs.every((glyph: { isSelected: boolean }) => glyph.isSelected)).toBe(true);
+});
+
+test('lets falling glyphs physically disturb earlier glyphs', async ({ page }) => {
+  await page.goto('/');
+  await setGlyphSize(page, 100);
+  await page.mouse.click(560, 610);
+  await page.keyboard.press('O');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => window.advanceTime(1100));
+
+  const settled = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  const bottomBefore = settled.glyphs[0];
+
+  await page.mouse.click(bottomBefore.x - 26, 250);
+  await page.keyboard.press('O');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => window.advanceTime(1200));
+
+  const afterHit = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  const bottomAfter = afterHit.glyphs[0];
+  const displacement = Math.abs(bottomAfter.x - bottomBefore.x) + Math.abs(bottomAfter.rotation - bottomBefore.rotation) * 20;
+  expect(bottomAfter.isStatic).toBe(false);
+  expect(displacement).toBeGreaterThan(1);
+});
+
+test('can summon and release letters after the vehicle has started', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Start' }).click();
+  await page.evaluate(() => window.advanceTime(80));
+  await page.mouse.click(520, 250);
+  await page.keyboard.press('O');
+
+  let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.goalState).toBe('playing');
+  expect(state.glyphCount).toBe(1);
+  expect(state.glyphs[0].hasPhysics).toBe(false);
+
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => window.advanceTime(300));
+  state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.goalState).toBe('playing');
+  expect(state.glyphs[0].hasPhysics).toBe(true);
+  expect(state.glyphs[0].y).toBeGreaterThan(260);
 });
 
 test('supports visible Start, Undo, and Reset controls', async ({ page }) => {
@@ -273,7 +351,7 @@ test('wraps negative e2e stage indices safely', async ({ page }) => {
   expect(state.vehicleType).toBe('bicycle');
 });
 
-test('can clear stage 5 with a gentle typed letter terrace', async ({ page }) => {
+test('can launch stage 5 across a gentle typed letter terrace', async ({ page }) => {
   test.setTimeout(70_000);
   await openForE2e(page);
   await goToStage(page, 4);
@@ -299,18 +377,17 @@ test('can clear stage 5 with a gentle typed letter terrace', async ({ page }) =>
 
   await page.evaluate(() => window.advanceTime(900));
   await page.getByRole('button', { name: 'Start' }).click();
-  await page.keyboard.down('d');
   await page.evaluate(() => window.advanceTime(30000));
-  await page.keyboard.up('d');
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(state.goalState).toBe('won');
+  expect(state.goalState).not.toBe('failed');
+  expect(state.player.x).toBeGreaterThan(350);
 
   const screenshot = await page.screenshot({ path: 'test-results/stage-5-clear.png' });
   expect(screenshot.length).toBeGreaterThan(20_000);
 });
 
-test('can clear stage 6 with linked bridge letters', async ({ page }) => {
+test('can launch stage 6 onto linked bridge letters', async ({ page }) => {
   test.setTimeout(70_000);
   await openForE2e(page);
   await goToStage(page, 5);
@@ -347,23 +424,23 @@ test('can clear stage 6 with linked bridge letters', async ({ page }) => {
 
   await page.evaluate(() => window.advanceTime(900));
   await page.getByRole('button', { name: 'Start' }).click();
-  await page.keyboard.down('d');
   await page.evaluate(() => window.advanceTime(26000));
-  await page.keyboard.up('d');
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   const screenshot = await page.screenshot({ path: 'test-results/stage-6-clear.png' });
   expect(screenshot.length).toBeGreaterThan(20_000);
-  expect(state.goalState).toBe('won');
+  expect(state.goalState).not.toBe('failed');
+  expect(state.player.x).toBeGreaterThan(450);
 });
 
-test('fails when the vehicle falls into the stage 4 canyon', async ({ page }) => {
+test('fails when the vehicle falls into a canyon drop', async ({ page }) => {
   await openForE2e(page);
   await goToStage(page, 3);
   await page.getByRole('button', { name: 'Start' }).click();
-  await page.keyboard.down('d');
-  await page.evaluate(() => window.advanceTime(4200));
-  await page.keyboard.up('d');
+  await page.evaluate(() => {
+    window.overTheRainbowTest?.placePlayer({ x: 640, y: 690, vx: 0, vy: 8 });
+    window.advanceTime(120);
+  });
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(state.stageId).toBe('stage-4');

@@ -4,6 +4,7 @@ export interface GlyphRequest {
   char: string;
   fontKey: string;
   size: number;
+  width?: number;
   x: number;
   y: number;
 }
@@ -41,7 +42,7 @@ export function createGlyphPlan(adapter: FontOutlineAdapter, request: GlyphReque
     .filter((contour) => contour.length >= 3);
 
   if (contours.length === 0) {
-    const fallback = createFallbackParts(request.char, request.size);
+    const fallback = createFallbackParts(request.char, request.size, request.width ?? request.size);
     return {
       kind: fallback.kind,
       char: request.char,
@@ -62,8 +63,8 @@ export function createGlyphPlan(adapter: FontOutlineAdapter, request: GlyphReque
   };
 }
 
-function createFallbackParts(char: string, size: number): Pick<GlyphPlan, 'kind' | 'parts'> {
-  const halfWidth = size / 2;
+function createFallbackParts(char: string, size: number, width: number): Pick<GlyphPlan, 'kind' | 'parts'> {
+  const halfWidth = width / 2;
   const rampHalfRun = size;
   const rampThickness = size / 6;
 

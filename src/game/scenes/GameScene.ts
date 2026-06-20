@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createCaretController } from '../caret/CaretController';
+import { createCaretController, type CaretSnapshot } from '../caret/CaretController';
 import { installGameDevtools } from '../devtools';
 import { createGlyphPlan } from '../glyph/GlyphPhysicsFactory';
 import type { GlyphPlan } from '../glyph/GlyphPhysicsFactory';
@@ -11,25 +11,19 @@ import { getVehicleDrive } from '../vehicle/VehicleController';
 import { estimateSlopeDegrees } from '../vehicle/SlopeEstimator';
 
 const WORLD = { width: 1280, height: 720 };
-const DRIVE_FORCE_SCALE = 1.6;
 const E2E_QUERY_FLAG = 'e2e';
-
-type MatterCollisionEvent = {
-  pairs: Phaser.Types.Physics.Matter.MatterCollisionPair[];
-};
-
-type MatterText = Phaser.GameObjects.Text & {
-  setAngularVelocity(value: number): Phaser.GameObjects.Text;
-  setStatic(value: boolean): Phaser.GameObjects.Text;
-  setVelocity(x: number, y: number): Phaser.GameObjects.Text;
-};
+const CARET_KEY_STEP_RATIO = 0.35;
+const SPACE_ADVANCE_RATIO = 0.42;
+const LETTER_GAP_RATIO = 0.06;
+const LAUNCH_SPEED_SCALE = 2.2;
+const LAUNCH_ANGULAR_SPEED = 0.12;
+const AUTO_DRIVE_FORCE_SCALE = 3.2;
 
 export class GameScene extends Phaser.Scene {
   private stageIndex = 0;
   private stage: StageDefinition = STAGES[0];
   private readonly caret = createCaretController(WORLD);
   private readonly inputController = createTextInputController();
-  private readonly activeKeys = { left: false, right: false };
   private previousPlayerPosition = { x: 0, y: 0 };
   private glyphCount = 0;
   private goalState: 'editing' | 'playing' | 'won' | 'failed' = 'editing';
@@ -39,15 +33,18 @@ export class GameScene extends Phaser.Scene {
   private glyphs: Phaser.GameObjects.Text[] = [];
   private readonly pendingGlyphs = new Set<Phaser.GameObjects.Text>();
   private readonly glyphPlans = new Map<Phaser.GameObjects.Text, GlyphPlan>();
+  private readonly selectedGlyphs = new Set<Phaser.GameObjects.Text>();
   private uiRoot?: HTMLDivElement;
+  private textCapture?: HTMLTextAreaElement;
   private caretGraphic?: Phaser.GameObjects.Rectangle;
+  private textBoxGraphic?: Phaser.GameObjects.Graphics;
   private stageLabel?: Phaser.GameObjects.Text;
   private statusLabel?: Phaser.GameObjects.Text;
   private hintLabel?: Phaser.GameObjects.Text;
   private groundGraphics?: Phaser.GameObjects.Graphics;
   private groundBodies: MatterJS.BodyType[] = [];
   private nextStageButton?: HTMLButtonElement;
-  private readonly playerSupportContacts = new Set<string>();
+  private suppressNextTextInput?: string;
 
   constructor() {
     super('GameScene');
@@ -59,7 +56,6 @@ export class GameScene extends Phaser.Scene {
     this.ensureGeneratedTextures();
     this.drawBackground();
     this.loadStage(0);
-    this.setupMatterCollisionTracking();
     this.setupInput();
     this.buildUi();
     this.drawHud();
@@ -85,13 +81,16 @@ export class GameScene extends Phaser.Scene {
               char: glyph.text,
               x: glyph.x,
               y: glyph.y,
+              size: this.glyphPlans.get(glyph)?.size ?? glyph.height,
               rotation: glyph.rotation,
               hasPhysics,
               isStatic: Boolean(body?.isStatic),
               isPending: this.pendingGlyphs.has(glyph),
+              isSelected: this.selectedGlyphs.has(glyph),
             };
           }),
           glyphCount: this.glyphCount,
+          selectedGlyphCount: this.selectedGlyphs.size,
           goalState: this.goalState,
         };
       },
@@ -119,20 +118,17 @@ export class GameScene extends Phaser.Scene {
 
     if (this.goalState === 'playing') {
       const vehicle = VEHICLES[this.stage.vehicleKey];
-      const direction = this.activeKeys.right ? 'right' : this.activeKeys.left ? 'left' : 'none';
-      const drive = getVehicleDrive(
-        vehicle,
-        direction,
-        estimateSlopeDegrees(this.player.rotation),
-        this.isPlayerSupported(),
-      );
+      const drive = getVehicleDrive(vehicle, 'right', estimateSlopeDegrees(this.player.rotation), true);
       const body = this.player.body as MatterJS.BodyType;
+      const minimumForce = vehicle.acceleration * vehicle.climbingForce * 0.72;
+      const forceX = Math.max(drive.forceX, minimumForce);
 
-      this.player.applyForce(new Phaser.Math.Vector2(drive.forceX * DRIVE_FORCE_SCALE, 0));
+      this.wakeBody(body);
+      this.player.applyForce(new Phaser.Math.Vector2(forceX * AUTO_DRIVE_FORCE_SCALE, 0));
       this.player.setAngularVelocity(body.angularVelocity * (1 - drive.angularDamping));
 
-      if (Math.abs(body.velocity.x) > drive.maxSpeed) {
-        this.player.setVelocityX(Math.sign(body.velocity.x) * drive.maxSpeed);
+      if (Math.abs(body.velocity.x) > drive.maxSpeed * LAUNCH_SPEED_SCALE) {
+        this.player.setVelocityX(Math.sign(body.velocity.x) * drive.maxSpeed * LAUNCH_SPEED_SCALE);
       }
     }
 
@@ -145,104 +141,18 @@ export class GameScene extends Phaser.Scene {
 
     if (this.goalState === 'playing' && this.didFailStage()) {
       this.goalState = 'failed';
-      this.activeKeys.left = false;
-      this.activeKeys.right = false;
     }
 
     this.drawHud();
   }
 
-  private setupMatterCollisionTracking(): void {
-    const addSupportContacts = (event: MatterCollisionEvent) => this.updatePlayerSupportContacts(event, 'add');
-    const removeSupportContacts = (event: MatterCollisionEvent) => this.updatePlayerSupportContacts(event, 'delete');
-
-    this.matter.world.on('collisionstart', addSupportContacts);
-    this.matter.world.on('collisionactive', addSupportContacts);
-    this.matter.world.on('collisionend', removeSupportContacts);
-
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.matter.world.off('collisionstart', addSupportContacts);
-      this.matter.world.off('collisionactive', addSupportContacts);
-      this.matter.world.off('collisionend', removeSupportContacts);
-    });
-  }
-
-  private updatePlayerSupportContacts(event: MatterCollisionEvent, action: 'add' | 'delete'): void {
-    for (const pair of event.pairs) {
-      if (action === 'add') this.lockGlyphsTouchingStaticSupport(pair);
-      if (!this.isPlayerSupportPair(pair)) continue;
-
-      if (action === 'add') {
-        this.playerSupportContacts.add(pair.id);
-      } else {
-        this.playerSupportContacts.delete(pair.id);
-      }
-    }
-  }
-
-  private isPlayerSupported(): boolean {
-    return this.playerSupportContacts.size > 0;
-  }
-
-  private isPlayerSupportPair(pair: Phaser.Types.Physics.Matter.MatterCollisionPair): boolean {
-    return (
-      (this.isPlayerBody(pair.bodyA) && this.isSupportBody(pair.bodyB)) ||
-      (this.isPlayerBody(pair.bodyB) && this.isSupportBody(pair.bodyA))
-    );
-  }
-
-  private isPlayerBody(body: MatterJS.BodyType): boolean {
-    const playerBody = this.player?.body as MatterJS.BodyType | undefined;
-    return Boolean(playerBody && (body === playerBody || body.parent === playerBody));
-  }
-
-  private isSupportBody(body: MatterJS.BodyType): boolean {
-    return this.hasSupportLabel(body) || Boolean(body.parent && this.hasSupportLabel(body.parent));
-  }
-
-  private hasSupportLabel(body: MatterJS.BodyType): boolean {
-    return body.label.startsWith('ground:') || body.label.startsWith('glyph:');
-  }
-
-  private lockGlyphsTouchingStaticSupport(pair: Phaser.Types.Physics.Matter.MatterCollisionPair): void {
-    this.lockGlyphIfSupported(pair.bodyA, pair.bodyB);
-    this.lockGlyphIfSupported(pair.bodyB, pair.bodyA);
-  }
-
-  private lockGlyphIfSupported(candidate: MatterJS.BodyType, support: MatterJS.BodyType): void {
-    const candidateBody = this.getRootBody(candidate);
-    const supportBody = this.getRootBody(support);
-
-    if (!this.isGlyphBody(candidateBody) || candidateBody.isStatic) return;
-    if (!this.isLockingSupportBody(supportBody)) return;
-
-    const glyph = this.glyphs.find((item) => {
-      const itemBody = item.body as MatterJS.BodyType | undefined;
-      return Boolean(itemBody && this.getRootBody(itemBody) === candidateBody);
-    });
-    if (!glyph) return;
-
-    const matterGlyph = glyph as MatterText;
-    matterGlyph.setVelocity(0, 0);
-    matterGlyph.setAngularVelocity(0);
-    matterGlyph.setStatic(true);
-  }
-
-  private getRootBody(body: MatterJS.BodyType): MatterJS.BodyType {
-    return body.parent && body.parent !== body ? body.parent : body;
-  }
-
-  private isGlyphBody(body: MatterJS.BodyType): boolean {
-    return body.label.startsWith('glyph:');
-  }
-
-  private isLockingSupportBody(body: MatterJS.BodyType): boolean {
-    return body.isStatic && (body.label.startsWith('ground:') || body.label.startsWith('glyph:'));
-  }
-
   private setupInput(): void {
+    this.createTextCapture();
+
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       this.caret.placeAt({ x: pointer.worldX, y: pointer.worldY });
+      this.clearGlyphSelection();
+      this.focusTextCapture();
     });
 
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: unknown[], _dx: number, dy: number) => {
@@ -259,6 +169,9 @@ export class GameScene extends Phaser.Scene {
       window.removeEventListener('keyup', this.handleKeyUp);
       window.removeEventListener('compositionstart', this.handleCompositionStart);
       window.removeEventListener('compositionend', this.handleCompositionEnd);
+      this.textCapture?.removeEventListener('beforeinput', this.handleBeforeInput);
+      this.textCapture?.remove();
+      this.textCapture = undefined;
     });
   }
 
@@ -299,6 +212,28 @@ export class GameScene extends Phaser.Scene {
     return button;
   }
 
+  private createTextCapture(): void {
+    const host = document.querySelector<HTMLElement>('#game-root');
+    if (!host) return;
+
+    this.textCapture?.remove();
+
+    const capture = document.createElement('textarea');
+    capture.className = 'text-capture';
+    capture.setAttribute('aria-label', 'Text input');
+    capture.autocapitalize = 'off';
+    capture.autocomplete = 'off';
+    capture.spellcheck = false;
+    capture.addEventListener('beforeinput', this.handleBeforeInput);
+    host.append(capture);
+    this.textCapture = capture;
+    this.focusTextCapture();
+  }
+
+  private focusTextCapture(): void {
+    this.textCapture?.focus({ preventScroll: true });
+  }
+
   private readonly handleStartClick = (): void => {
     this.startVehicle();
   };
@@ -318,17 +253,7 @@ export class GameScene extends Phaser.Scene {
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    const movementKey = event.key.toLowerCase();
-    if (this.goalState === 'playing' && movementKey === 'a') {
-      this.activeKeys.left = true;
-      event.preventDefault();
-      return;
-    }
-    if (this.goalState === 'playing' && movementKey === 'd') {
-      this.activeKeys.right = true;
-      event.preventDefault();
-      return;
-    }
+    this.focusTextCapture();
 
     const intent = this.inputController.keyDown({
       key: event.key,
@@ -343,13 +268,11 @@ export class GameScene extends Phaser.Scene {
     if (intent.type === 'release') this.releasePendingGlyphs();
     if (intent.type === 'undo') this.undoGlyph();
     if (intent.type === 'start') this.startVehicle();
+    if (intent.type === 'selectAll') this.selectAllGlyphs();
+    if (intent.type === 'caretMove') this.moveCaretFromKeyboard(intent.dx, intent.dy);
   };
 
-  private readonly handleKeyUp = (event: KeyboardEvent): void => {
-    const key = event.key.toLowerCase();
-    if (key === 'a') this.activeKeys.left = false;
-    if (key === 'd') this.activeKeys.right = false;
-  };
+  private readonly handleKeyUp = (_event: KeyboardEvent): void => {};
 
   private readonly handleCompositionStart = (): void => {
     this.inputController.compositionStart();
@@ -357,8 +280,42 @@ export class GameScene extends Phaser.Scene {
 
   private readonly handleCompositionEnd = (event: CompositionEvent): void => {
     const intent = this.inputController.compositionEnd(event.data);
-    if (intent.type === 'glyph') this.createGlyph(intent.value);
+    if (intent.type === 'glyph') {
+      this.suppressNextTextInput = intent.value;
+      this.insertText(intent.value);
+      this.clearTextCaptureValue();
+    }
   };
+
+  private readonly handleBeforeInput = (event: InputEvent): void => {
+    const data = event.data;
+    if (!data || event.inputType === 'insertCompositionText' || event.isComposing) return;
+
+    event.preventDefault();
+
+    if (this.suppressNextTextInput === data) {
+      this.suppressNextTextInput = undefined;
+      this.clearTextCaptureValue();
+      return;
+    }
+
+    this.insertText(data);
+    this.clearTextCaptureValue();
+  };
+
+  private clearTextCaptureValue(): void {
+    if (this.textCapture) this.textCapture.value = '';
+  }
+
+  private insertText(value: string): void {
+    for (const char of Array.from(value)) {
+      if (char === ' ') {
+        this.moveCaretBySpace();
+      } else if (char !== '\n' && char !== '\r' && char !== '\t') {
+        this.createGlyph(char);
+      }
+    }
+  }
 
   private ensureGeneratedTextures(): void {
     this.createGeneratedTexture('vehicle-walking', 48, 68, (graphics) => {
@@ -460,9 +417,6 @@ export class GameScene extends Phaser.Scene {
     this.stage = STAGES[this.stageIndex];
     this.goalState = 'editing';
     this.glyphCount = 0;
-    this.activeKeys.left = false;
-    this.activeKeys.right = false;
-    this.playerSupportContacts.clear();
     this.player?.destroy();
     this.drawStageTerrain();
 
@@ -471,8 +425,9 @@ export class GameScene extends Phaser.Scene {
       label: `vehicle:${vehicle.key}`,
       isStatic: true,
       mass: vehicle.mass,
-      friction: 0.9,
-      frictionAir: 0.015,
+      friction: 0.12,
+      frictionAir: 0.004,
+      restitution: 0.08,
     });
     const displaySize = this.getVehicleDisplaySize(vehicle.key);
     this.player.setDisplaySize(displaySize.width, displaySize.height);
@@ -651,24 +606,28 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createGlyph(char: string): void {
+    if (this.selectedGlyphs.size > 0) this.deleteSelectedGlyphs();
+
     const caret = this.caret.snapshot();
+    const visualWidth = this.estimateGlyphWidth(char, caret.glyphSize);
     const plan = createGlyphPlan(
       { getContours: () => [] },
       {
         char,
         fontKey: 'system-serif',
         size: caret.glyphSize,
-        x: caret.position.x,
+        width: visualWidth,
+        x: caret.position.x + visualWidth / 2,
         y: caret.position.y,
       },
     );
 
-    this.spawnGlyphFromPlan(plan);
+    this.spawnGlyphFromPlan(plan, visualWidth);
   }
 
-  private spawnGlyphFromPlan(plan: GlyphPlan): void {
+  private spawnGlyphFromPlan(plan: GlyphPlan, visualWidth: number): void {
     const text = this.add.text(plan.origin.x, plan.origin.y - plan.size / 2, plan.char, {
-      fontFamily: 'Georgia, serif',
+      fontFamily: '"Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", Georgia, serif',
       fontSize: `${plan.size}px`,
       color: '#29395f',
       stroke: '#ffffff',
@@ -679,7 +638,17 @@ export class GameScene extends Phaser.Scene {
     this.pendingGlyphs.add(text);
     this.glyphPlans.set(text, plan);
     this.glyphCount = this.glyphs.length;
-    this.caret.advanceInline();
+    this.caret.advanceInline(visualWidth + Math.max(2, plan.size * LETTER_GAP_RATIO));
+  }
+
+  private estimateGlyphWidth(char: string, size: number): number {
+    if (char === '/' || char === '\\') return size * 1.75;
+    if (char === 'A' || char === 'V' || char === 'v' || char === '^') return size;
+    if (/[\u3130-\u318f\uac00-\ud7a3]/u.test(char)) return size * 0.92;
+    if (/[ilI1|.,'!:;]/u.test(char)) return size * 0.3;
+    if (/[mwMW@#%&]/u.test(char)) return size * 0.82;
+    if (/[A-Z0-9]/u.test(char)) return size * 0.62;
+    return size * 0.54;
   }
 
   private releasePendingGlyphs(): void {
@@ -698,14 +667,16 @@ export class GameScene extends Phaser.Scene {
       this.matter.add.gameObject(glyph, {
         shape: this.createGlyphMatterShape(plan),
         isStatic: false,
-        friction: 0.82,
-        frictionStatic: 1.1,
-        frictionAir: 0.018,
-        restitution: 0.05,
+        friction: 0.42,
+        frictionStatic: 0.72,
+        frictionAir: 0.008,
+        restitution: 0.28,
+        density: 0.0016,
         label: `glyph:${plan.char}`,
       });
       this.pendingGlyphs.delete(glyph);
     }
+    this.clearGlyphSelection();
   }
 
   private createGlyphMatterShape(plan: GlyphPlan): Phaser.Types.Physics.Matter.MatterSetBodyConfig {
@@ -725,17 +696,45 @@ export class GameScene extends Phaser.Scene {
 
   private moveCaretBySpace(): void {
     const caret = this.caret.snapshot();
-    this.caret.placeAt({ x: caret.position.x + caret.glyphSize, y: caret.position.y });
+    this.clearGlyphSelection();
+    this.caret.advanceInline(Math.max(5, caret.glyphSize * SPACE_ADVANCE_RATIO));
+  }
+
+  private moveCaretFromKeyboard(dx: number, dy: number): void {
+    const caret = this.caret.snapshot();
+    const step = Math.max(4, Math.round(caret.glyphSize * CARET_KEY_STEP_RATIO));
+    this.clearGlyphSelection();
+    this.caret.moveBy({ x: dx * step, y: dy * step });
   }
 
   private startVehicle(): void {
     if (this.goalState === 'editing') {
+      const vehicle = VEHICLES[this.stage.vehicleKey];
       this.goalState = 'playing';
-      this.player?.setStatic(false);
+      this.setPlayerStatic(false);
+      this.player?.setVelocity(vehicle.maxSpeed * LAUNCH_SPEED_SCALE, -0.25);
+      this.player?.setAngularVelocity(LAUNCH_ANGULAR_SPEED);
     }
   }
 
+  private setPlayerStatic(isStatic: boolean): void {
+    const body = this.player?.body as MatterJS.BodyType | undefined;
+    if (!body) return;
+
+    this.matter.body.setStatic(body, isStatic);
+    this.wakeBody(body);
+  }
+
+  private wakeBody(body: MatterJS.BodyType): void {
+    body.isSleeping = false;
+  }
+
   private undoGlyph(): void {
+    if (this.selectedGlyphs.size > 0) {
+      this.deleteSelectedGlyphs();
+      return;
+    }
+
     const glyph = this.glyphs.pop();
     if (glyph) {
       this.pendingGlyphs.delete(glyph);
@@ -743,6 +742,39 @@ export class GameScene extends Phaser.Scene {
       glyph.destroy();
     }
     this.glyphCount = this.glyphs.length;
+  }
+
+  private selectAllGlyphs(): void {
+    this.selectedGlyphs.clear();
+    this.glyphs.forEach((glyph) => this.selectedGlyphs.add(glyph));
+    this.refreshGlyphSelectionStyles();
+  }
+
+  private clearGlyphSelection(): void {
+    if (this.selectedGlyphs.size === 0) return;
+
+    this.selectedGlyphs.clear();
+    this.refreshGlyphSelectionStyles();
+  }
+
+  private deleteSelectedGlyphs(): void {
+    const selected = new Set(this.selectedGlyphs);
+    this.glyphs = this.glyphs.filter((glyph) => {
+      if (!selected.has(glyph)) return true;
+
+      this.pendingGlyphs.delete(glyph);
+      this.glyphPlans.delete(glyph);
+      glyph.destroy();
+      return false;
+    });
+    this.selectedGlyphs.clear();
+    this.glyphCount = this.glyphs.length;
+  }
+
+  private refreshGlyphSelectionStyles(): void {
+    for (const glyph of this.glyphs) {
+      glyph.setBackgroundColor(this.selectedGlyphs.has(glyph) ? '#b7dcff' : 'transparent');
+    }
   }
 
   private resetStage(): void {
@@ -772,7 +804,6 @@ export class GameScene extends Phaser.Scene {
   }): void {
     if (!this.player) return;
 
-    this.playerSupportContacts.clear();
     this.player.setPosition(pose.x, pose.y);
     this.player.setVelocity(pose.vx ?? 0, pose.vy ?? 0);
     this.player.setRotation(pose.rotation ?? 0);
@@ -788,7 +819,7 @@ export class GameScene extends Phaser.Scene {
     this.glyphs = [];
     this.pendingGlyphs.clear();
     this.glyphPlans.clear();
-    this.playerSupportContacts.clear();
+    this.selectedGlyphs.clear();
     this.glyphCount = 0;
   }
 
@@ -850,6 +881,28 @@ export class GameScene extends Phaser.Scene {
 
     this.caretGraphic.setPosition(caret.position.x, caret.position.y - caret.glyphSize / 2);
     this.caretGraphic.setSize(3, caret.glyphSize);
+    this.drawTextBoxFrame(caret);
+  }
+
+  private drawTextBoxFrame(caret: CaretSnapshot): void {
+    if (!this.textBoxGraphic) {
+      this.textBoxGraphic = this.add.graphics();
+      this.textBoxGraphic.setDepth(16);
+    }
+
+    const pendingBounds = Array.from(this.pendingGlyphs).map((glyph) => glyph.getBounds());
+    const left = Math.min(caret.position.x, ...pendingBounds.map((bounds) => bounds.left));
+    const right = Math.max(caret.position.x + Math.max(20, caret.glyphSize * 0.35), ...pendingBounds.map((bounds) => bounds.right));
+    const top = Math.min(caret.position.y - caret.glyphSize - 8, ...pendingBounds.map((bounds) => bounds.top - 6));
+    const bottom = Math.max(caret.position.y + 8, ...pendingBounds.map((bounds) => bounds.bottom + 6));
+    const width = Math.max(26, right - left);
+    const height = Math.max(24, bottom - top);
+
+    this.textBoxGraphic.clear();
+    this.textBoxGraphic.fillStyle(0xffffff, 0.16);
+    this.textBoxGraphic.fillRoundedRect(left - 8, top, width + 16, height, 6);
+    this.textBoxGraphic.lineStyle(2, 0x223047, 0.45);
+    this.textBoxGraphic.strokeRoundedRect(left - 8, top, width + 16, height, 6);
   }
 
   private getStatusText(): string {

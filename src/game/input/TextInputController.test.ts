@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { createTextInputController } from './TextInputController';
 
 describe('TextInputController', () => {
-  it('turns a completed English key into a glyph intent', () => {
+  it('maps WASD and arrow keys to caret movement', () => {
     const controller = createTextInputController();
-    expect(controller.keyDown({ key: 'A', ctrlKey: false, metaKey: false, repeat: false })).toEqual({
-      type: 'glyph',
-      value: 'A',
+    expect(controller.keyDown({ key: 'A', ctrlKey: false, metaKey: false, repeat: false })).toEqual({ type: 'caretMove', dx: -1, dy: 0 });
+    expect(controller.keyDown({ key: 'ArrowRight', ctrlKey: false, metaKey: false, repeat: true })).toEqual({
+      type: 'caretMove',
+      dx: 1,
+      dy: 0,
     });
   });
 
@@ -20,6 +22,7 @@ describe('TextInputController', () => {
   it('maps Ctrl+Space to spacing', () => {
     const controller = createTextInputController();
     expect(controller.keyDown({ key: ' ', ctrlKey: true, metaKey: false, repeat: false })).toEqual({ type: 'space' });
+    expect(controller.keyDown({ key: ' ', ctrlKey: false, metaKey: false, repeat: false })).toEqual({ type: 'space' });
   });
 
   it('maps Enter to releasing the current typed glyphs', () => {
@@ -29,15 +32,16 @@ describe('TextInputController', () => {
     });
   });
 
-  it('maps Backspace to undo and Ctrl+R to start', () => {
+  it('maps Backspace to undo, Ctrl+R to start, and Ctrl+A to select all', () => {
     const controller = createTextInputController();
     expect(controller.keyDown({ key: 'Backspace', ctrlKey: false, metaKey: false, repeat: false })).toEqual({ type: 'undo' });
     expect(controller.keyDown({ key: 'r', ctrlKey: true, metaKey: false, repeat: false })).toEqual({ type: 'start' });
+    expect(controller.keyDown({ key: 'a', ctrlKey: true, metaKey: false, repeat: false })).toEqual({ type: 'selectAll' });
   });
 
-  it('ignores repeat and modified text keys', () => {
+  it('leaves ordinary text input to the browser text capture', () => {
     const controller = createTextInputController();
-    expect(controller.keyDown({ key: 'B', ctrlKey: false, metaKey: false, repeat: true })).toEqual({ type: 'none' });
+    expect(controller.keyDown({ key: 'L', ctrlKey: false, metaKey: false, repeat: false })).toEqual({ type: 'none' });
     expect(controller.keyDown({ key: 'B', ctrlKey: true, metaKey: false, repeat: false })).toEqual({ type: 'none' });
   });
 });

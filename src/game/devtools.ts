@@ -19,12 +19,15 @@ export interface GameStateSnapshotInput {
     char: string;
     x: number;
     y: number;
+    size: number;
     rotation: number;
     hasPhysics: boolean;
     isStatic: boolean;
     isPending: boolean;
+    isSelected: boolean;
   }>;
   glyphCount: number;
+  selectedGlyphCount: number;
   goalState: GoalState;
 }
 
@@ -38,6 +41,7 @@ export function createGameStateSnapshot(input: GameStateSnapshotInput): GameStat
     caret: { ...input.caret },
     glyphs: input.glyphs.map((glyph) => ({ ...glyph })),
     glyphCount: input.glyphCount,
+    selectedGlyphCount: input.selectedGlyphCount,
     goalState: input.goalState,
   };
 }

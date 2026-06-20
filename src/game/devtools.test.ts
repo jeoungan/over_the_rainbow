@@ -9,8 +9,11 @@ describe('devtools state', () => {
         vehicleType: 'racingCar',
         player: { x: 120, y: 500, vx: 1.5, vy: -0.2 },
         caret: { x: 300, y: 240, glyphSize: 64 },
-        glyphs: [{ char: 'A', x: 320, y: 280, rotation: 0.1, hasPhysics: true, isStatic: false, isPending: false }],
+        glyphs: [
+          { char: 'A', x: 320, y: 280, size: 64, rotation: 0.1, hasPhysics: true, isStatic: false, isPending: false, isSelected: true },
+        ],
         glyphCount: 3,
+        selectedGlyphCount: 1,
         goalState: 'playing',
       }),
     );
@@ -20,8 +23,11 @@ describe('devtools state', () => {
       vehicleType: 'racingCar',
       player: { x: 120, y: 500, vx: 1.5, vy: -0.2 },
       caret: { x: 300, y: 240, glyphSize: 64 },
-      glyphs: [{ char: 'A', x: 320, y: 280, rotation: 0.1, hasPhysics: true, isStatic: false, isPending: false }],
+      glyphs: [
+        { char: 'A', x: 320, y: 280, size: 64, rotation: 0.1, hasPhysics: true, isStatic: false, isPending: false, isSelected: true },
+      ],
       glyphCount: 3,
+      selectedGlyphCount: 1,
       goalState: 'playing',
     });
   });
