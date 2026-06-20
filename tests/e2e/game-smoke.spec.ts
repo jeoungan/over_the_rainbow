@@ -98,8 +98,12 @@ test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in 
   await page.mouse.wheel(0, -120);
   await page.keyboard.press('Control+Space');
   await page.evaluate(() => {
-    window.dispatchEvent(new CompositionEvent('compositionstart'));
-    window.dispatchEvent(new CompositionEvent('compositionend', { data: '한' }));
+    const capture = document.querySelector<HTMLTextAreaElement>('.text-capture');
+    if (!capture) return;
+
+    capture.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    capture.value = '\uD55C';
+    capture.dispatchEvent(new CompositionEvent('compositionend', { data: '\uD55C', bubbles: true }));
   });
 
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
@@ -107,6 +111,64 @@ test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in 
   expect(state.caret.y).toBeCloseTo(340, 0);
   expect(state.caret.glyphSize).toBe(60);
   expect(state.glyphCount).toBe(1);
+});
+
+test('ignores IME language-toggle composition noise', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(360, 300);
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'HangulMode', bubbles: true }));
+    window.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    window.dispatchEvent(new CompositionEvent('compositionend', { data: '\u314D', bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Process', bubbles: true }));
+  });
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.glyphCount).toBe(0);
+});
+
+test('does not refocus the text capture on every typed key', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(260, 300);
+  await page.evaluate(() => {
+    const capture = document.querySelector<HTMLTextAreaElement>('.text-capture');
+    if (!capture) return;
+
+    capture.focus();
+    (window as Window & { __focusCount?: number }).__focusCount = 0;
+    const originalFocus = capture.focus.bind(capture);
+    capture.focus = (options?: FocusOptions) => {
+      const testWindow = window as Window & { __focusCount?: number };
+      testWindow.__focusCount = (testWindow.__focusCount ?? 0) + 1;
+      originalFocus(options);
+    };
+  });
+
+  await page.keyboard.press('H');
+  await page.keyboard.press('I');
+
+  const focusCount = await page.evaluate(() => (window as Window & { __focusCount?: number }).__focusCount);
+  expect(focusCount).toBe(0);
+});
+
+test('keeps up with a fast burst of typed text', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.click(260, 300);
+
+  await page.evaluate(() => {
+    const capture = document.querySelector<HTMLTextAreaElement>('.text-capture');
+    capture?.dispatchEvent(new InputEvent('beforeinput', {
+      data: 'rainbowtyping',
+      inputType: 'insertText',
+      bubbles: true,
+      cancelable: true,
+    }));
+  });
+
+  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.glyphCount).toBe('rainbowtyping'.length);
+  expect(state.glyphs.map((glyph: { char: string }) => glyph.char).join('')).toBe('rainbowtyping');
 });
 
 test('releases typed glyphs into physics when Enter is pressed', async ({ page }) => {
@@ -155,13 +217,21 @@ test('moves the typing cursor with keys, supports mixed sizes, and selects all t
 
   for (let i = 0; i < 7; i += 1) await page.mouse.wheel(0, 120);
   await page.evaluate(() => {
-    window.dispatchEvent(new CompositionEvent('compositionstart'));
-    window.dispatchEvent(new CompositionEvent('compositionend', { data: 'ㅇ' }));
+    const capture = document.querySelector<HTMLTextAreaElement>('.text-capture');
+    if (!capture) return;
+
+    capture.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    capture.value = '\u3147';
+    capture.dispatchEvent(new CompositionEvent('compositionend', { data: '\u3147', bubbles: true }));
   });
   for (let i = 0; i < 5; i += 1) await page.mouse.wheel(0, 120);
   await page.evaluate(() => {
-    window.dispatchEvent(new CompositionEvent('compositionstart'));
-    window.dispatchEvent(new CompositionEvent('compositionend', { data: 'ㅏ' }));
+    const capture = document.querySelector<HTMLTextAreaElement>('.text-capture');
+    if (!capture) return;
+
+    capture.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    capture.value = '\u314F';
+    capture.dispatchEvent(new CompositionEvent('compositionend', { data: '\u314F', bubbles: true }));
   });
 
   let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));

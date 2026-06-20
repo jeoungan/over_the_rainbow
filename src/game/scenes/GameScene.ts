@@ -45,6 +45,7 @@ export class GameScene extends Phaser.Scene {
   private groundBodies: MatterJS.BodyType[] = [];
   private nextStageButton?: HTMLButtonElement;
   private suppressNextTextInput?: string;
+  private isComposingText = false;
 
   constructor() {
     super('GameScene');
@@ -161,15 +162,14 @@ export class GameScene extends Phaser.Scene {
 
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
-    window.addEventListener('compositionstart', this.handleCompositionStart);
-    window.addEventListener('compositionend', this.handleCompositionEnd);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       window.removeEventListener('keydown', this.handleKeyDown);
       window.removeEventListener('keyup', this.handleKeyUp);
-      window.removeEventListener('compositionstart', this.handleCompositionStart);
-      window.removeEventListener('compositionend', this.handleCompositionEnd);
       this.textCapture?.removeEventListener('beforeinput', this.handleBeforeInput);
+      this.textCapture?.removeEventListener('input', this.handleTextInput);
+      this.textCapture?.removeEventListener('compositionstart', this.handleCompositionStart);
+      this.textCapture?.removeEventListener('compositionend', this.handleCompositionEnd);
       this.textCapture?.remove();
       this.textCapture = undefined;
     });
@@ -216,6 +216,10 @@ export class GameScene extends Phaser.Scene {
     const host = document.querySelector<HTMLElement>('#game-root');
     if (!host) return;
 
+    this.textCapture?.removeEventListener('beforeinput', this.handleBeforeInput);
+    this.textCapture?.removeEventListener('input', this.handleTextInput);
+    this.textCapture?.removeEventListener('compositionstart', this.handleCompositionStart);
+    this.textCapture?.removeEventListener('compositionend', this.handleCompositionEnd);
     this.textCapture?.remove();
 
     const capture = document.createElement('textarea');
@@ -225,13 +229,18 @@ export class GameScene extends Phaser.Scene {
     capture.autocomplete = 'off';
     capture.spellcheck = false;
     capture.addEventListener('beforeinput', this.handleBeforeInput);
+    capture.addEventListener('input', this.handleTextInput);
+    capture.addEventListener('compositionstart', this.handleCompositionStart);
+    capture.addEventListener('compositionend', this.handleCompositionEnd);
     host.append(capture);
     this.textCapture = capture;
     this.focusTextCapture();
   }
 
   private focusTextCapture(): void {
-    this.textCapture?.focus({ preventScroll: true });
+    if (!this.textCapture || document.activeElement === this.textCapture) return;
+
+    this.textCapture.focus({ preventScroll: true });
   }
 
   private readonly handleStartClick = (): void => {
@@ -274,22 +283,26 @@ export class GameScene extends Phaser.Scene {
 
   private readonly handleKeyUp = (_event: KeyboardEvent): void => {};
 
-  private readonly handleCompositionStart = (): void => {
+  private readonly handleCompositionStart = (event: CompositionEvent): void => {
+    if (event.target !== this.textCapture) return;
+
+    this.isComposingText = true;
     this.inputController.compositionStart();
   };
 
   private readonly handleCompositionEnd = (event: CompositionEvent): void => {
-    const intent = this.inputController.compositionEnd(event.data);
-    if (intent.type === 'glyph') {
-      this.suppressNextTextInput = intent.value;
-      this.insertText(intent.value);
-      this.clearTextCaptureValue();
-    }
+    if (event.target !== this.textCapture) return;
+
+    this.isComposingText = false;
+    this.inputController.compositionEnd('');
+    this.commitCapturedText(this.textCapture?.value || event.data);
   };
 
   private readonly handleBeforeInput = (event: InputEvent): void => {
+    if (event.target !== this.textCapture) return;
+
     const data = event.data;
-    if (!data || event.inputType === 'insertCompositionText' || event.isComposing) return;
+    if (!data || this.isComposingText || event.inputType === 'insertCompositionText' || event.isComposing) return;
 
     event.preventDefault();
 
@@ -302,6 +315,32 @@ export class GameScene extends Phaser.Scene {
     this.insertText(data);
     this.clearTextCaptureValue();
   };
+
+  private readonly handleTextInput = (event: Event): void => {
+    if (event.target !== this.textCapture || this.isComposingText) return;
+
+    this.commitCapturedText(this.textCapture?.value ?? '');
+  };
+
+  private commitCapturedText(value: string): void {
+    if (!value) {
+      this.clearTextCaptureValue();
+      return;
+    }
+
+    if (this.suppressNextTextInput === value) {
+      this.suppressNextTextInput = undefined;
+      this.clearTextCaptureValue();
+      return;
+    }
+
+    this.suppressNextTextInput = value;
+    window.setTimeout(() => {
+      if (this.suppressNextTextInput === value) this.suppressNextTextInput = undefined;
+    }, 50);
+    this.insertText(value);
+    this.clearTextCaptureValue();
+  }
 
   private clearTextCaptureValue(): void {
     if (this.textCapture) this.textCapture.value = '';
