@@ -19,6 +19,10 @@ export interface GameStateSnapshotInput {
     char: string;
     x: number;
     y: number;
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
     size: number;
     rotation: number;
     hasPhysics: boolean;
@@ -29,6 +33,7 @@ export interface GameStateSnapshotInput {
   glyphCount: number;
   selectedGlyphCount: number;
   goalState: GoalState;
+  playTimeRemainingMs: number;
 }
 
 export type GameStateSnapshot = GameStateSnapshotInput;
@@ -43,6 +48,7 @@ export function createGameStateSnapshot(input: GameStateSnapshotInput): GameStat
     glyphCount: input.glyphCount,
     selectedGlyphCount: input.selectedGlyphCount,
     goalState: input.goalState,
+    playTimeRemainingMs: input.playTimeRemainingMs,
   };
 }
 

@@ -18,6 +18,7 @@ const LETTER_GAP_RATIO = 0.06;
 const LAUNCH_SPEED_SCALE = 2.2;
 const LAUNCH_ANGULAR_SPEED = 0.12;
 const AUTO_DRIVE_FORCE_SCALE = 3.2;
+const PLAY_LIMIT_MS = 15_000;
 
 export class GameScene extends Phaser.Scene {
   private stageIndex = 0;
@@ -41,15 +42,22 @@ export class GameScene extends Phaser.Scene {
   private caretGraphic?: Phaser.GameObjects.Rectangle;
   private textBoxGraphic?: Phaser.GameObjects.Graphics;
   private stageLabel?: Phaser.GameObjects.Text;
-  private statusLabel?: Phaser.GameObjects.Text;
-  private hintLabel?: Phaser.GameObjects.Text;
   private logoGroup?: Phaser.GameObjects.Container;
   private groundGraphics?: Phaser.GameObjects.Graphics;
   private groundBodies: MatterJS.BodyType[] = [];
+  private startButton?: HTMLButtonElement;
+  private undoButton?: HTMLButtonElement;
+  private resetButton?: HTMLButtonElement;
   private nextStageButton?: HTMLButtonElement;
+  private replayButton?: HTMLButtonElement;
+  private closeButton?: HTMLButtonElement;
+  private endOverlay?: HTMLDivElement;
+  private endOverlayTitle?: HTMLDivElement;
   private suppressNextTextInput?: string;
   private isComposingText = false;
   private rainbowReveal = 1;
+  private playElapsedMs = 0;
+  private endOverlayDismissed = false;
 
   constructor() {
     super('GameScene');
@@ -82,10 +90,15 @@ export class GameScene extends Phaser.Scene {
           glyphs: this.glyphs.map((glyph) => {
             const body = glyph.body as MatterJS.BodyType | undefined;
             const hasPhysics = Boolean(body);
+            const bounds = glyph.getBounds();
             return {
               char: glyph.text,
               x: glyph.x,
               y: glyph.y,
+              left: bounds.left,
+              right: bounds.right,
+              top: bounds.top,
+              bottom: bounds.bottom,
               size: this.glyphPlans.get(glyph)?.size ?? glyph.height,
               rotation: glyph.rotation,
               hasPhysics,
@@ -97,12 +110,13 @@ export class GameScene extends Phaser.Scene {
           glyphCount: this.glyphCount,
           selectedGlyphCount: this.selectedGlyphs.size,
           goalState: this.goalState,
+          playTimeRemainingMs: this.getPlayTimeRemainingMs(),
         };
       },
       (ms) => {
         const steps = Math.max(1, Math.round(ms / (1000 / 60)));
         for (let i = 0; i < steps; i += 1) {
-          this.update();
+          this.update(undefined, 1000 / 60);
           this.matter.world.step(1000 / 60);
         }
       },
@@ -115,7 +129,7 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
-  update(): void {
+  update(_time?: number, delta = 1000 / 60): void {
     if (!this.player) return;
 
     const previous = { ...this.previousPlayerPosition };
@@ -123,6 +137,7 @@ export class GameScene extends Phaser.Scene {
     this.updateVehicleArt();
 
     if (this.goalState === 'playing') {
+      this.playElapsedMs = Math.min(PLAY_LIMIT_MS, this.playElapsedMs + delta);
       const vehicle = VEHICLES[this.stage.vehicleKey];
       const drive = getVehicleDrive(vehicle, 'right', estimateSlopeDegrees(this.player.rotation), true);
       const body = this.player.body as MatterJS.BodyType;
@@ -142,11 +157,15 @@ export class GameScene extends Phaser.Scene {
       this.goalState === 'playing' &&
       didPassOverRainbow(previous, { x: this.player.x, y: this.player.y }, this.stage.rainbow)
     ) {
-      this.goalState = 'won';
+      this.finishStage('won');
     }
 
     if (this.goalState === 'playing' && this.didFailStage()) {
-      this.goalState = 'failed';
+      this.finishStage('failed');
+    }
+
+    if (this.goalState === 'playing' && this.playElapsedMs >= PLAY_LIMIT_MS) {
+      this.finishStage('failed');
     }
 
     this.drawHud();
@@ -156,13 +175,18 @@ export class GameScene extends Phaser.Scene {
     this.createTextCapture();
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      this.caret.placeAt({ x: pointer.worldX, y: pointer.worldY });
+      if (!this.canEditWorld()) return;
+
+      this.placeCaretAt({ x: pointer.worldX, y: pointer.worldY });
       this.clearGlyphSelection();
       this.refocusTextCaptureAfterPointer();
     });
 
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: unknown[], _dx: number, dy: number) => {
+      if (!this.canEditWorld()) return;
+
       this.caret.changeSizeFromWheel(dy);
+      this.constrainCaretToStage();
     });
 
     window.addEventListener('keydown', this.handleKeyDown);
@@ -189,23 +213,42 @@ export class GameScene extends Phaser.Scene {
     const uiRoot = document.createElement('div');
     uiRoot.className = 'game-ui';
 
+    this.startButton = this.createButton('Start', this.handleStartClick);
+    this.undoButton = this.createButton('Undo', this.handleUndoClick);
+    this.resetButton = this.createButton('Reset', this.handleResetClick);
+
+    uiRoot.append(this.startButton, this.undoButton, this.resetButton);
+
+    const endOverlay = document.createElement('div');
+    endOverlay.className = 'end-overlay';
+    endOverlay.hidden = true;
+
+    const endOverlayTitle = document.createElement('div');
+    endOverlayTitle.className = 'end-overlay-title';
+
+    const endOverlayActions = document.createElement('div');
+    endOverlayActions.className = 'end-overlay-actions';
+
     this.nextStageButton = this.createButton('Next Stage', this.handleNextStageClick);
     this.nextStageButton.className = 'next-stage-button';
+    this.replayButton = this.createButton('Replay', this.handleReplayClick);
+    this.closeButton = this.createButton('Close', this.handleCloseOverlayClick);
 
-    uiRoot.append(
-      this.createButton('Start', this.handleStartClick),
-      this.createButton('Undo', this.handleUndoClick),
-      this.createButton('Reset', this.handleResetClick),
-      this.nextStageButton,
-    );
+    endOverlayActions.append(this.nextStageButton, this.replayButton, this.closeButton);
+    endOverlay.append(endOverlayTitle, endOverlayActions);
 
     host.append(uiRoot);
+    host.append(endOverlay);
     this.uiRoot = uiRoot;
+    this.endOverlay = endOverlay;
+    this.endOverlayTitle = endOverlayTitle;
     this.refreshUi();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.uiRoot?.remove();
+      this.endOverlay?.remove();
       this.uiRoot = undefined;
+      this.endOverlay = undefined;
     });
   }
 
@@ -271,6 +314,15 @@ export class GameScene extends Phaser.Scene {
     }
   };
 
+  private readonly handleReplayClick = (): void => {
+    this.resetStage();
+  };
+
+  private readonly handleCloseOverlayClick = (): void => {
+    this.endOverlayDismissed = true;
+    this.refreshUi();
+  };
+
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     this.focusTextCapture();
 
@@ -282,6 +334,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     if (intent.type !== 'none') event.preventDefault();
+    if (!this.canEditWorld() && intent.type !== 'none') return;
     if (intent.type === 'glyph') this.createGlyph(intent.value);
     if (intent.type === 'space') this.moveCaretBySpace();
     if (intent.type === 'release') this.releasePendingGlyphs();
@@ -333,6 +386,11 @@ export class GameScene extends Phaser.Scene {
   };
 
   private commitCapturedText(value: string): void {
+    if (!this.canEditWorld()) {
+      this.clearTextCaptureValue();
+      return;
+    }
+
     if (!value) {
       this.clearTextCaptureValue();
       return;
@@ -356,7 +414,44 @@ export class GameScene extends Phaser.Scene {
     if (this.textCapture) this.textCapture.value = '';
   }
 
+  private canEditWorld(): boolean {
+    return this.goalState === 'editing' || this.goalState === 'playing';
+  }
+
+  private getPlayTimeRemainingMs(): number {
+    if (this.goalState === 'editing') return PLAY_LIMIT_MS;
+    return Math.max(0, Math.ceil(PLAY_LIMIT_MS - this.playElapsedMs));
+  }
+
+  private placeCaretAt(point: Point): void {
+    this.caret.placeAt(this.clampCaretPointToStage(point));
+  }
+
+  private constrainCaretToStage(): void {
+    const caret = this.caret.snapshot();
+    this.placeCaretAt(caret.position);
+  }
+
+  private clampCaretPointToStage(point: Point): Point {
+    const x = Phaser.Math.Clamp(point.x, 0, WORLD.width);
+    const y = Phaser.Math.Clamp(point.y, 0, this.getCaretFloorY(x));
+    return { x, y };
+  }
+
+  private getCaretFloorY(x: number): number {
+    const segmentTops = this.stage.groundSegments.map((segment) => segment.y - segment.height / 2);
+    const containingSegments = this.stage.groundSegments.filter((segment) => {
+      const left = segment.x - segment.width / 2;
+      const right = segment.x + segment.width / 2;
+      return x >= left && x <= right;
+    });
+    const activeTops = containingSegments.length > 0 ? containingSegments.map((segment) => segment.y - segment.height / 2) : segmentTops;
+    return Math.max(0, Math.min(...activeTops));
+  }
+
   private insertText(value: string): void {
+    if (!this.canEditWorld()) return;
+
     for (const char of Array.from(value)) {
       if (char === ' ') {
         this.moveCaretBySpace();
@@ -557,10 +652,13 @@ export class GameScene extends Phaser.Scene {
     this.stageIndex = index;
     this.stage = STAGES[this.stageIndex];
     this.goalState = 'editing';
+    this.playElapsedMs = 0;
+    this.endOverlayDismissed = false;
     this.glyphCount = 0;
     this.player?.destroy();
     this.playerVisual?.destroy();
     this.drawStageTerrain();
+    this.constrainCaretToStage();
 
     const vehicle = VEHICLES[this.stage.vehicleKey];
     this.player = this.matter.add.image(this.stage.spawn.x, this.stage.spawn.y, 'vehicle-hitbox', undefined, {
@@ -818,20 +916,21 @@ export class GameScene extends Phaser.Scene {
     if (this.selectedGlyphs.size > 0) this.deleteSelectedGlyphs();
 
     const caret = this.caret.snapshot();
-    const visualWidth = this.estimateGlyphWidth(char, caret.glyphSize);
+    const advanceWidth = this.estimateGlyphWidth(char, caret.glyphSize);
+    const physicsWidth = this.estimateGlyphPhysicsWidth(char, caret.glyphSize, advanceWidth);
     const plan = createGlyphPlan(
       { getContours: () => [] },
       {
         char,
         fontKey: 'system-serif',
         size: caret.glyphSize,
-        width: visualWidth,
-        x: caret.position.x + visualWidth / 2,
+        width: physicsWidth,
+        x: caret.position.x + physicsWidth / 2,
         y: caret.position.y,
       },
     );
 
-    this.spawnGlyphFromPlan(plan, visualWidth, caret.position);
+    this.spawnGlyphFromPlan(plan, advanceWidth, caret.position);
   }
 
   private spawnGlyphFromPlan(plan: GlyphPlan, visualWidth: number, caretStart: Point): void {
@@ -842,17 +941,19 @@ export class GameScene extends Phaser.Scene {
       stroke: '#ffffff',
       strokeThickness: 4,
     });
-    text.setOrigin(0.5, 0.5);
+    const originX = text.width > 0 ? (plan.origin.x - caretStart.x) / text.width : 0.5;
+    text.setOrigin(originX, 0.5);
     this.glyphs.push(text);
     this.pendingGlyphs.add(text);
     this.glyphPlans.set(text, plan);
     this.glyphCaretStarts.set(text, { ...caretStart });
     this.glyphCount = this.glyphs.length;
     this.caret.advanceInline(visualWidth + Math.max(2, plan.size * LETTER_GAP_RATIO));
+    this.constrainCaretToStage();
   }
 
   private estimateGlyphWidth(char: string, size: number): number {
-    if (char === '/' || char === '\\') return size * 1.75;
+    if (char === '/' || char === '\\') return size * 0.42;
     if (char === 'A' || char === 'V' || char === 'v' || char === '^') return size;
     if (/[\u3130-\u318f\uac00-\ud7a3]/u.test(char)) return size * 0.92;
     if (/[ilI1|.,'!:;]/u.test(char)) return size * 0.3;
@@ -861,7 +962,14 @@ export class GameScene extends Phaser.Scene {
     return size * 0.54;
   }
 
+  private estimateGlyphPhysicsWidth(char: string, size: number, advanceWidth: number): number {
+    if (char === '/' || char === '\\') return size * 2;
+    return advanceWidth;
+  }
+
   private releasePendingGlyphs(): void {
+    if (!this.canEditWorld()) return;
+
     for (const glyph of Array.from(this.pendingGlyphs)) {
       if (glyph.body) {
         this.pendingGlyphs.delete(glyph);
@@ -908,23 +1016,53 @@ export class GameScene extends Phaser.Scene {
     const caret = this.caret.snapshot();
     this.clearGlyphSelection();
     this.caret.advanceInline(Math.max(5, caret.glyphSize * SPACE_ADVANCE_RATIO));
+    this.constrainCaretToStage();
   }
 
   private moveCaretFromKeyboard(dx: number, dy: number): void {
     const caret = this.caret.snapshot();
     const step = Math.max(4, Math.round(caret.glyphSize * CARET_KEY_STEP_RATIO));
     this.clearGlyphSelection();
-    this.caret.moveBy({ x: dx * step, y: dy * step });
+    this.placeCaretAt({ x: caret.position.x + dx * step, y: caret.position.y + dy * step });
   }
 
   private startVehicle(): void {
     if (this.goalState === 'editing') {
       const vehicle = VEHICLES[this.stage.vehicleKey];
+      this.playElapsedMs = 0;
+      this.endOverlayDismissed = false;
       this.goalState = 'playing';
       this.setPlayerStatic(false);
       this.player?.setVelocity(vehicle.maxSpeed * LAUNCH_SPEED_SCALE, -0.25);
       this.player?.setAngularVelocity(LAUNCH_ANGULAR_SPEED);
     }
+  }
+
+  private finishStage(nextState: 'won' | 'failed'): void {
+    if (this.goalState === nextState) return;
+
+    this.goalState = nextState;
+    this.playElapsedMs = nextState === 'failed' ? PLAY_LIMIT_MS : this.playElapsedMs;
+    this.endOverlayDismissed = false;
+    this.freezeStagePhysics();
+  }
+
+  private freezeStagePhysics(): void {
+    this.freezeBody(this.player);
+
+    for (const glyph of this.glyphs) {
+      if (glyph.body) this.freezeBody(glyph);
+    }
+  }
+
+  private freezeBody(gameObject?: Phaser.Physics.Matter.Image | Phaser.GameObjects.Text): void {
+    const body = gameObject?.body as MatterJS.BodyType | undefined;
+    if (!body) return;
+
+    this.matter.body.setVelocity(body, { x: 0, y: 0 });
+    this.matter.body.setAngularVelocity(body, 0);
+    this.matter.body.setStatic(body, true);
+    this.wakeBody(body);
   }
 
   private setPlayerStatic(isStatic: boolean): void {
@@ -952,7 +1090,7 @@ export class GameScene extends Phaser.Scene {
       this.glyphPlans.delete(glyph);
       this.glyphCaretStarts.delete(glyph);
       glyph.destroy();
-      if (caretStart) this.caret.placeAt(caretStart);
+      if (caretStart) this.placeCaretAt(caretStart);
     }
     this.glyphCount = this.glyphs.length;
   }
@@ -986,7 +1124,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.selectedGlyphs.clear();
     this.glyphCount = this.glyphs.length;
-    if (caretStart) this.caret.placeAt(caretStart);
+    if (caretStart) this.placeCaretAt(caretStart);
   }
 
   private refreshGlyphSelectionStyles(): void {
@@ -1050,7 +1188,7 @@ export class GameScene extends Phaser.Scene {
     const label = `${this.stage.title} / ${vehicle.label}`;
 
     if (!this.stageLabel) {
-      this.stageLabel = this.add.text(24, 72, label, {
+      this.stageLabel = this.add.text(20, 66, label, {
         fontFamily: 'Inter, system-ui, sans-serif',
         fontSize: '18px',
         color: '#223047',
@@ -1061,36 +1199,6 @@ export class GameScene extends Phaser.Scene {
       this.stageLabel.setDepth(20);
     } else {
       this.stageLabel.setText(label);
-    }
-
-    const statusText = this.getStatusText();
-    if (!this.statusLabel) {
-      this.statusLabel = this.add.text(24, 100, statusText, {
-        fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '16px',
-        color: '#34415f',
-        stroke: '#ffffff',
-        strokeThickness: 3,
-      });
-      this.statusLabel.setScrollFactor(0);
-      this.statusLabel.setDepth(20);
-    } else {
-      this.statusLabel.setText(statusText);
-    }
-
-    const hintText = this.goalState === 'editing' ? this.stage.hint : '';
-    if (!this.hintLabel) {
-      this.hintLabel = this.add.text(24, 126, hintText, {
-        fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '14px',
-        color: '#46536f',
-        stroke: '#ffffff',
-        strokeThickness: 3,
-      });
-      this.hintLabel.setScrollFactor(0);
-      this.hintLabel.setDepth(20);
-    } else {
-      this.hintLabel.setText(hintText);
     }
 
     const caret = this.caret.snapshot();
@@ -1125,19 +1233,26 @@ export class GameScene extends Phaser.Scene {
     this.textBoxGraphic.strokeRoundedRect(left - 8, top, width + 16, height, 6);
   }
 
-  private getStatusText(): string {
-    if (this.goalState === 'editing') return 'Place letters, then Start';
-    if (this.goalState === 'playing') return 'Driving';
-    if (this.goalState === 'won') return 'Cleared - Next Stage';
-    return 'Failed - Reset to retry';
-  }
-
   private refreshUi(): void {
-    if (!this.nextStageButton) return;
+    const isEnded = this.goalState === 'won' || this.goalState === 'failed';
+
+    if (this.startButton) this.startButton.disabled = this.goalState !== 'editing';
+    if (this.undoButton) this.undoButton.disabled = isEnded;
+    if (this.resetButton) this.resetButton.disabled = isEnded;
+
+    if (!this.endOverlay || !this.endOverlayTitle || !this.nextStageButton || !this.replayButton || !this.closeButton) return;
+
+    const shouldShowOverlay = isEnded && !this.endOverlayDismissed;
+    this.endOverlay.hidden = !shouldShowOverlay;
+    this.endOverlayTitle.textContent = this.goalState === 'won' ? 'Clear! Over the Rainbow!' : 'Time up!';
 
     const canAdvance = this.goalState === 'won';
     this.nextStageButton.hidden = !canAdvance;
     this.nextStageButton.disabled = !canAdvance;
+    this.replayButton.hidden = false;
+    this.replayButton.disabled = !isEnded;
+    this.closeButton.hidden = this.goalState !== 'failed';
+    this.closeButton.disabled = this.goalState !== 'failed';
   }
 
   private shouldInstallTestControls(): boolean {
@@ -1172,10 +1287,10 @@ export class GameScene extends Phaser.Scene {
     if (!graphics) return;
 
     const { rainbow } = this.stage;
-    const visualWidth = rainbow.width * 1.46;
-    const radius = visualWidth / 2;
+    const radius = rainbow.width * 0.82;
+    const baseY = rainbow.centerY + rainbow.height * 0.27;
     const centerAngle = 270;
-    const span = 142 * Phaser.Math.Clamp(reveal, 0, 1);
+    const span = 180 * Phaser.Math.Clamp(reveal, 0, 1);
     const startAngle = Phaser.Math.DegToRad(centerAngle - span / 2);
     const endAngle = Phaser.Math.DegToRad(centerAngle + span / 2);
     const colors = [0xf34d6a, 0xff8a3d, 0xffd84f, 0x63d76e, 0x46c5ff, 0x597cff, 0x9b65ff];
@@ -1183,20 +1298,20 @@ export class GameScene extends Phaser.Scene {
     graphics.clear();
     graphics.lineStyle(34, 0xffffff, 0.18 * reveal);
     graphics.beginPath();
-    graphics.arc(rainbow.centerX, rainbow.centerY + 7, radius + 8, startAngle, endAngle, false);
+    graphics.arc(rainbow.centerX, baseY, radius + 8, startAngle, endAngle, false);
     graphics.strokePath();
 
     colors.forEach((color, index) => {
       graphics.lineStyle(10, color, 0.96);
       graphics.beginPath();
-      graphics.arc(rainbow.centerX, rainbow.centerY + index * 5, radius - index * 7, startAngle, endAngle, false);
+      graphics.arc(rainbow.centerX, baseY, radius - index * 7, startAngle, endAngle, false);
       graphics.strokePath();
     });
 
     if (reveal > 0.82) {
       const cloudAlpha = Phaser.Math.Clamp((reveal - 0.82) / 0.18, 0, 1);
-      this.drawRainbowCloud(graphics, rainbow.centerX - radius * 0.82, rainbow.centerY + 28, cloudAlpha);
-      this.drawRainbowCloud(graphics, rainbow.centerX + radius * 0.82, rainbow.centerY + 28, cloudAlpha);
+      this.drawRainbowCloud(graphics, rainbow.centerX - radius, baseY, cloudAlpha);
+      this.drawRainbowCloud(graphics, rainbow.centerX + radius, baseY, cloudAlpha);
     }
 
     const sparkleAlpha = 0.45 * reveal;
@@ -1208,7 +1323,7 @@ export class GameScene extends Phaser.Scene {
       { x: 0.45, y: -0.08, size: 3 },
     ]) {
       const x = rainbow.centerX + sparkle.x * radius;
-      const y = rainbow.centerY + sparkle.y * rainbow.height;
+      const y = baseY - radius * 0.66 + sparkle.y * rainbow.height;
       graphics.fillTriangle(x, y - sparkle.size * 1.6, x + sparkle.size, y, x, y + sparkle.size * 1.6);
       graphics.fillTriangle(x, y - sparkle.size * 1.6, x - sparkle.size, y, x, y + sparkle.size * 1.6);
     }
