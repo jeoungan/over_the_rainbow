@@ -10,11 +10,15 @@
     <script>
       (() => {
         const path = window.location.pathname.replace(/\\/g, '/').toLowerCase();
+        const isLocalDevHost = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(window.location.hostname);
+        const isBuiltEntry = path.endsWith('/dist/index.html');
 
-        if (window.location.protocol === 'file:') {
-          if (!path.endsWith('/dist/index.html')) {
-            window.location.replace(new URL('./dist/index.html', window.location.href).href);
-          }
+        if (isBuiltEntry) {
+          return;
+        }
+
+        if (window.location.protocol === 'file:' || !isLocalDevHost) {
+          window.location.replace(new URL('./dist/index.html', window.location.href).href);
           return;
         }
 
