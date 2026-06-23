@@ -53,6 +53,15 @@ export class GameScene extends Phaser.Scene {
   private closeButton?: HTMLButtonElement;
   private endOverlay?: HTMLDivElement;
   private endOverlayTitle?: HTMLDivElement;
+  private tutorialOverlay?: HTMLDivElement;
+  private tutorialContent?: HTMLDivElement;
+  private tutorialStepLabel?: HTMLDivElement;
+  private tutorialNextButton?: HTMLButtonElement;
+  private tutorialStep = 0;
+  private isTutorialActive = false;
+  private compositionGlyphs: Phaser.GameObjects.Text[] = [];
+  private compositionCaretStart?: Point;
+  private compositionText = '';
   private suppressNextTextInput?: string;
   private isComposingText = false;
   private rainbowReveal = 1;
@@ -66,6 +75,7 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.matter.world.setBounds(0, 0, WORLD.width, WORLD.height);
     this.cameras.main.setBounds(0, 0, WORLD.width, WORLD.height);
+    this.isTutorialActive = !this.shouldSkipIntro();
     this.ensureGeneratedTextures();
     this.drawBackground();
     this.loadStage(0);
@@ -198,6 +208,7 @@ export class GameScene extends Phaser.Scene {
       this.textCapture?.removeEventListener('beforeinput', this.handleBeforeInput);
       this.textCapture?.removeEventListener('input', this.handleTextInput);
       this.textCapture?.removeEventListener('compositionstart', this.handleCompositionStart);
+      this.textCapture?.removeEventListener('compositionupdate', this.handleCompositionUpdate);
       this.textCapture?.removeEventListener('compositionend', this.handleCompositionEnd);
       this.textCapture?.remove();
       this.textCapture = undefined;
@@ -237,18 +248,44 @@ export class GameScene extends Phaser.Scene {
     endOverlayActions.append(this.nextStageButton, this.replayButton, this.closeButton);
     endOverlay.append(endOverlayTitle, endOverlayActions);
 
+    const tutorialOverlay = document.createElement('div');
+    tutorialOverlay.className = 'tutorial-overlay';
+    tutorialOverlay.hidden = !this.isTutorialActive;
+
+    const tutorialContent = document.createElement('div');
+    tutorialContent.className = 'tutorial-content';
+
+    const tutorialFooter = document.createElement('div');
+    tutorialFooter.className = 'tutorial-footer';
+
+    const tutorialStepLabel = document.createElement('div');
+    tutorialStepLabel.className = 'tutorial-step-label';
+
+    this.tutorialNextButton = this.createButton('Next', this.handleTutorialNextClick);
+    this.tutorialNextButton.className = 'tutorial-next-button';
+
+    tutorialFooter.append(tutorialStepLabel, this.tutorialNextButton);
+    tutorialOverlay.append(tutorialContent, tutorialFooter);
+
     host.append(uiRoot);
     host.append(endOverlay);
+    host.append(tutorialOverlay);
     this.uiRoot = uiRoot;
     this.endOverlay = endOverlay;
     this.endOverlayTitle = endOverlayTitle;
+    this.tutorialOverlay = tutorialOverlay;
+    this.tutorialContent = tutorialContent;
+    this.tutorialStepLabel = tutorialStepLabel;
+    this.renderTutorial();
     this.refreshUi();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.uiRoot?.remove();
       this.endOverlay?.remove();
+      this.tutorialOverlay?.remove();
       this.uiRoot = undefined;
       this.endOverlay = undefined;
+      this.tutorialOverlay = undefined;
     });
   }
 
@@ -260,6 +297,64 @@ export class GameScene extends Phaser.Scene {
     return button;
   }
 
+  private renderTutorial(): void {
+    if (!this.tutorialOverlay || !this.tutorialContent || !this.tutorialStepLabel || !this.tutorialNextButton) return;
+
+    this.tutorialOverlay.hidden = !this.isTutorialActive;
+    this.tutorialStepLabel.textContent = `${this.tutorialStep + 1} / 2`;
+    this.tutorialNextButton.textContent = this.tutorialStep === 0 ? 'Next' : 'Start Game';
+    this.tutorialContent.innerHTML = this.tutorialStep === 0 ? this.getControlsTutorialMarkup() : this.getRulesTutorialMarkup();
+  }
+
+  private getControlsTutorialMarkup(): string {
+    return `
+      <section class="tutorial-shot tutorial-shot-controls" aria-label="Keyboard Controls">
+        <div class="tutorial-copy">
+          <p class="tutorial-kicker">OVER THE RAINBOW</p>
+          <h1>Keyboard Controls</h1>
+          <p>Type letters anywhere, then drop them into the world with Enter.</p>
+        </div>
+        <div class="keyboard-map" aria-hidden="true">
+          <span class="key wide">Ctrl+R<br><small>Start</small></span>
+          <span class="key wide">Ctrl+A<br><small>Select</small></span>
+          <span class="key wide">Ctrl+Space<br><small>Space</small></span>
+          <span class="key">Enter<br><small>Drop</small></span>
+          <span class="key">Wheel<br><small>Size</small></span>
+          <span class="key">← ↑ ↓ →<br><small>Cursor</small></span>
+        </div>
+        <div class="tutorial-notes">
+          <span>Arrow keys move the text cursor.</span>
+          <span>Mouse click moves the cursor anywhere above the ground.</span>
+          <span>Mouse wheel changes the next letter size before you drop it.</span>
+          <span>WASD are normal letters, not movement keys.</span>
+        </div>
+      </section>
+    `;
+  }
+
+  private getRulesTutorialMarkup(): string {
+    return `
+      <section class="tutorial-shot tutorial-shot-rules" aria-label="Rules">
+        <div class="tutorial-copy">
+          <p class="tutorial-kicker">MISSION</p>
+          <h1>Rules</h1>
+          <p>Go over the rainbow before the 15 second run ends.</p>
+        </div>
+        <div class="rules-diagram" aria-hidden="true">
+          <div class="diagram-ramp">letters become ramps</div>
+          <div class="diagram-car"></div>
+          <div class="diagram-rainbow"></div>
+        </div>
+        <div class="tutorial-notes">
+          <span>Vehicle power changes by stage: walking, bicycle, small car, racing car.</span>
+          <span>Fast vehicles climb steep letters better, but flip more easily.</span>
+          <span>Rainbow height and distance change the difficulty.</span>
+          <span>Build bridges, ramps, and landings with falling text.</span>
+        </div>
+      </section>
+    `;
+  }
+
   private createTextCapture(): void {
     const host = document.querySelector<HTMLElement>('#game-root');
     if (!host) return;
@@ -267,6 +362,7 @@ export class GameScene extends Phaser.Scene {
     this.textCapture?.removeEventListener('beforeinput', this.handleBeforeInput);
     this.textCapture?.removeEventListener('input', this.handleTextInput);
     this.textCapture?.removeEventListener('compositionstart', this.handleCompositionStart);
+    this.textCapture?.removeEventListener('compositionupdate', this.handleCompositionUpdate);
     this.textCapture?.removeEventListener('compositionend', this.handleCompositionEnd);
     this.textCapture?.remove();
 
@@ -279,6 +375,7 @@ export class GameScene extends Phaser.Scene {
     capture.addEventListener('beforeinput', this.handleBeforeInput);
     capture.addEventListener('input', this.handleTextInput);
     capture.addEventListener('compositionstart', this.handleCompositionStart);
+    capture.addEventListener('compositionupdate', this.handleCompositionUpdate);
     capture.addEventListener('compositionend', this.handleCompositionEnd);
     host.append(capture);
     this.textCapture = capture;
@@ -323,6 +420,19 @@ export class GameScene extends Phaser.Scene {
     this.refreshUi();
   };
 
+  private readonly handleTutorialNextClick = (): void => {
+    if (this.tutorialStep === 0) {
+      this.tutorialStep = 1;
+      this.renderTutorial();
+      this.refreshUi();
+      return;
+    }
+
+    this.isTutorialActive = false;
+    this.refreshUi();
+    this.refocusTextCaptureAfterPointer();
+  };
+
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     this.focusTextCapture();
 
@@ -351,6 +461,13 @@ export class GameScene extends Phaser.Scene {
 
     this.isComposingText = true;
     this.inputController.compositionStart();
+    this.beginCompositionPreview();
+  };
+
+  private readonly handleCompositionUpdate = (event: CompositionEvent): void => {
+    if (event.target !== this.textCapture || !this.isComposingText) return;
+
+    this.replaceCompositionPreview(this.getCompositionText(event));
   };
 
   private readonly handleCompositionEnd = (event: CompositionEvent): void => {
@@ -358,7 +475,7 @@ export class GameScene extends Phaser.Scene {
 
     this.isComposingText = false;
     this.inputController.compositionEnd('');
-    this.commitCapturedText(this.textCapture?.value || event.data);
+    this.finalizeCompositionPreview(this.getCompositionText(event));
   };
 
   private readonly handleBeforeInput = (event: InputEvent): void => {
@@ -415,7 +532,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private canEditWorld(): boolean {
-    return this.goalState === 'editing' || this.goalState === 'playing';
+    return !this.isTutorialActive && (this.goalState === 'editing' || this.goalState === 'playing');
   }
 
   private getPlayTimeRemainingMs(): number {
@@ -459,6 +576,63 @@ export class GameScene extends Phaser.Scene {
         this.createGlyph(char);
       }
     }
+  }
+
+  private beginCompositionPreview(): void {
+    this.clearCompositionPreview({ restoreCaret: false });
+    this.compositionCaretStart = { ...this.caret.snapshot().position };
+    this.compositionText = '';
+  }
+
+  private getCompositionText(event: CompositionEvent): string {
+    return event.data || this.textCapture?.value || '';
+  }
+
+  private replaceCompositionPreview(value: string): void {
+    if (!this.canEditWorld()) return;
+    if (!value || value === this.compositionText) return;
+    if (!this.compositionCaretStart) this.compositionCaretStart = { ...this.caret.snapshot().position };
+
+    this.clearCompositionPreview({ restoreCaret: true });
+    this.compositionText = value;
+
+    for (const char of Array.from(value)) {
+      if (char === ' ' || char === '\n' || char === '\r' || char === '\t') continue;
+
+      const glyph = this.createGlyph(char);
+      if (glyph) {
+        glyph.setAlpha(0.78);
+        this.compositionGlyphs.push(glyph);
+      }
+    }
+  }
+
+  private finalizeCompositionPreview(value: string): void {
+    const finalValue = value || this.compositionText;
+    if (finalValue && finalValue !== this.compositionText) this.replaceCompositionPreview(finalValue);
+
+    for (const glyph of this.compositionGlyphs) glyph.setAlpha(1);
+    this.compositionGlyphs = [];
+    this.compositionCaretStart = undefined;
+    this.compositionText = '';
+    this.clearTextCaptureValue();
+  }
+
+  private clearCompositionPreview(options: { restoreCaret: boolean }): void {
+    const caretStart = this.compositionCaretStart;
+
+    for (const glyph of this.compositionGlyphs) {
+      this.pendingGlyphs.delete(glyph);
+      this.glyphPlans.delete(glyph);
+      this.glyphCaretStarts.delete(glyph);
+      this.selectedGlyphs.delete(glyph);
+      this.glyphs = this.glyphs.filter((candidate) => candidate !== glyph);
+      glyph.destroy();
+    }
+
+    this.compositionGlyphs = [];
+    this.glyphCount = this.glyphs.length;
+    if (options.restoreCaret && caretStart) this.placeCaretAt(caretStart);
   }
 
   private ensureGeneratedTextures(): void {
@@ -912,7 +1086,7 @@ export class GameScene extends Phaser.Scene {
     return fellToWorldBottom;
   }
 
-  private createGlyph(char: string): void {
+  private createGlyph(char: string): Phaser.GameObjects.Text | undefined {
     if (this.selectedGlyphs.size > 0) this.deleteSelectedGlyphs();
 
     const caret = this.caret.snapshot();
@@ -930,10 +1104,10 @@ export class GameScene extends Phaser.Scene {
       },
     );
 
-    this.spawnGlyphFromPlan(plan, advanceWidth, caret.position);
+    return this.spawnGlyphFromPlan(plan, advanceWidth, caret.position);
   }
 
-  private spawnGlyphFromPlan(plan: GlyphPlan, visualWidth: number, caretStart: Point): void {
+  private spawnGlyphFromPlan(plan: GlyphPlan, visualWidth: number, caretStart: Point): Phaser.GameObjects.Text {
     const text = this.add.text(plan.origin.x, plan.origin.y - plan.size / 2, plan.char, {
       fontFamily: '"Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", Georgia, serif',
       fontSize: `${plan.size}px`,
@@ -950,6 +1124,7 @@ export class GameScene extends Phaser.Scene {
     this.glyphCount = this.glyphs.length;
     this.caret.advanceInline(visualWidth + Math.max(2, plan.size * LETTER_GAP_RATIO));
     this.constrainCaretToStage();
+    return text;
   }
 
   private estimateGlyphWidth(char: string, size: number): number {
@@ -1178,6 +1353,9 @@ export class GameScene extends Phaser.Scene {
     this.glyphPlans.clear();
     this.glyphCaretStarts.clear();
     this.selectedGlyphs.clear();
+    this.compositionGlyphs = [];
+    this.compositionCaretStart = undefined;
+    this.compositionText = '';
     this.glyphCount = 0;
   }
 
@@ -1235,10 +1413,12 @@ export class GameScene extends Phaser.Scene {
 
   private refreshUi(): void {
     const isEnded = this.goalState === 'won' || this.goalState === 'failed';
+    const isLockedByTutorial = this.isTutorialActive;
 
-    if (this.startButton) this.startButton.disabled = this.goalState !== 'editing';
-    if (this.undoButton) this.undoButton.disabled = isEnded;
-    if (this.resetButton) this.resetButton.disabled = isEnded;
+    if (this.startButton) this.startButton.disabled = isLockedByTutorial || this.goalState !== 'editing';
+    if (this.undoButton) this.undoButton.disabled = isLockedByTutorial || isEnded;
+    if (this.resetButton) this.resetButton.disabled = isLockedByTutorial || isEnded;
+    if (this.tutorialOverlay) this.tutorialOverlay.hidden = !this.isTutorialActive;
 
     if (!this.endOverlay || !this.endOverlayTitle || !this.nextStageButton || !this.replayButton || !this.closeButton) return;
 
@@ -1258,6 +1438,11 @@ export class GameScene extends Phaser.Scene {
   private shouldInstallTestControls(): boolean {
     const params = new URLSearchParams(window.location.search);
     return import.meta.env.DEV && params.get(E2E_QUERY_FLAG) === '1';
+  }
+
+  private shouldSkipIntro(): boolean {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('skipIntro') === '1';
   }
 
   private drawRainbow(): void {

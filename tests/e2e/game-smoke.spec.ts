@@ -1,12 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function openForE2e(page: Page): Promise<void> {
-  await page.goto('/?e2e=1');
+  await page.goto('/?e2e=1&skipIntro=1');
   await waitForTestControls(page);
 }
 
 async function waitForTestControls(page: Page): Promise<void> {
   await page.waitForFunction(() => Boolean(window.overTheRainbowTest?.goToStage));
+}
+
+async function openGame(page: Page): Promise<void> {
+  await page.goto('/?skipIntro=1');
 }
 
 async function goToStage(page: Page, stageIndex: number): Promise<void> {
@@ -24,7 +28,7 @@ async function setGlyphSize(page: Page, targetSize: number): Promise<void> {
 }
 
 test('renders the game canvas and exposes text state', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const canvas = page.locator('canvas');
   await expect(canvas).toBeVisible();
 
@@ -36,7 +40,7 @@ test('renders the game canvas and exposes text state', async ({ page }) => {
 });
 
 test('loads the polished side-view art background', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const backgroundImage = await page.evaluate(() => getComputedStyle(document.querySelector<HTMLElement>('#game-root')!).backgroundImage);
   expect(backgroundImage).toContain('over-the-rainbow-sideview-background');
 
@@ -45,8 +49,40 @@ test('loads the polished side-view art background', async ({ page }) => {
   expect(screenshot.length).toBeGreaterThan(80_000);
 });
 
-test('keeps the upper-left UI to stage and three editing controls', async ({ page }) => {
+test('shows two tutorial screenshot panels before the first play input', async ({ page }) => {
   await page.goto('/');
+
+  await expect(page.locator('.tutorial-overlay')).toBeVisible();
+  await expect(page.getByText('Keyboard Controls')).toBeVisible();
+  await expect(page.getByText('Type letters anywhere')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByText('Rules')).toBeVisible();
+  await expect(page.getByText('Go over the rainbow')).toBeVisible();
+  await expect(page.getByText('Vehicle power changes by stage')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Start Game' }).click();
+  await expect(page.locator('.tutorial-overlay')).toBeHidden();
+});
+
+test('blocks game input until the tutorial is dismissed', async ({ page }) => {
+  await page.goto('/');
+
+  await page.keyboard.press('O');
+  await expect(page.getByRole('button', { name: 'Start' })).toBeDisabled();
+  let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.glyphCount).toBe(0);
+  expect(state.goalState).toBe('editing');
+
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Start Game' }).click();
+  await page.keyboard.press('O');
+  state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.glyphCount).toBe(1);
+});
+
+test('keeps the upper-left UI to stage and three editing controls', async ({ page }) => {
+  await openGame(page);
 
   await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
@@ -57,14 +93,14 @@ test('keeps the upper-left UI to stage and three editing controls', async ({ pag
 });
 
 test('does not expose test stage controls in the default page', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
 
   const hasTestControls = await page.evaluate(() => Boolean(window.overTheRainbowTest));
   expect(hasTestControls).toBe(false);
 });
 
 test('creates a glyph, starts the vehicle, and moves right', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(360, 360);
   await page.keyboard.press('O');
 
@@ -80,7 +116,7 @@ test('creates a glyph, starts the vehicle, and moves right', async ({ page }) =>
 });
 
 test('keeps the vehicle still before Start even when A or D are pressed', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
 
   await page.keyboard.down('d');
@@ -98,9 +134,6 @@ test('keeps the vehicle still before Start even when A or D are pressed', async 
 test('types D as text while the launched vehicle continues forward', async ({ page }) => {
   await openForE2e(page);
   await page.getByRole('button', { name: 'Start' }).click();
-  await page.evaluate(() => {
-    window.overTheRainbowTest?.placePlayer({ x: 220, y: 350, vx: 0, vy: 0 });
-  });
   const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
 
   await page.keyboard.press('d');
@@ -110,11 +143,11 @@ test('types D as text while the launched vehicle continues forward', async ({ pa
   expect(state.goalState).toBe('playing');
   expect(state.glyphCount).toBe(before.glyphCount + 1);
   expect(state.glyphs[state.glyphs.length - 1].char).toBe('d');
-  expect(state.player.vx).toBeGreaterThan(0);
+  expect(state.player.x).toBeGreaterThan(before.player.x);
 });
 
 test('types WASD as letters and uses only arrows for caret movement', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(260, 300);
   const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
 
@@ -131,7 +164,7 @@ test('types WASD as letters and uses only arrows for caret movement', async ({ p
 });
 
 test('clamps the caret above the driving ground and places slash text at the cursor edge', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(500, 710);
 
   let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
@@ -146,7 +179,7 @@ test('clamps the caret above the driving ground and places slash text at the cur
 });
 
 test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in the scene', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(420, 340);
   await page.mouse.wheel(0, -120);
   await page.keyboard.press('Control+Space');
@@ -166,8 +199,51 @@ test('supports caret click, wheel sizing, Ctrl+Space, and Korean composition in 
   expect(state.glyphCount).toBe(1);
 });
 
+test('previews Korean composition before the syllable is finalized', async ({ page }) => {
+  await openGame(page);
+  await page.mouse.click(420, 340);
+
+  await page.evaluate(() => {
+    const capture = document.querySelector<HTMLTextAreaElement>('.text-capture');
+    if (!capture) return;
+
+    capture.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    capture.value = '\u3134';
+    capture.dispatchEvent(new CompositionEvent('compositionupdate', { data: '\u3134', bubbles: true }));
+  });
+
+  let state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.glyphCount).toBe(1);
+  expect(state.glyphs[0].char).toBe('\u3134');
+  const previewX = state.glyphs[0].x;
+
+  await page.evaluate(() => {
+    const capture = document.querySelector<HTMLTextAreaElement>('.text-capture');
+    if (!capture) return;
+
+    capture.value = '\uB098';
+    capture.dispatchEvent(new CompositionEvent('compositionupdate', { data: '\uB098', bubbles: true }));
+  });
+
+  state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.glyphCount).toBe(1);
+  expect(state.glyphs[0].char).toBe('\uB098');
+  expect(Math.abs(state.glyphs[0].x - previewX)).toBeLessThan(30);
+
+  await page.evaluate(() => {
+    const capture = document.querySelector<HTMLTextAreaElement>('.text-capture');
+    if (!capture) return;
+
+    capture.dispatchEvent(new CompositionEvent('compositionend', { data: '\uB098', bubbles: true }));
+  });
+
+  state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  expect(state.glyphCount).toBe(1);
+  expect(state.glyphs[0].char).toBe('\uB098');
+});
+
 test('ignores IME language-toggle composition noise', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(360, 300);
 
   await page.evaluate(() => {
@@ -182,7 +258,7 @@ test('ignores IME language-toggle composition noise', async ({ page }) => {
 });
 
 test('does not refocus the text capture on every typed key', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(260, 300);
   await page.evaluate(() => {
     const capture = document.querySelector<HTMLTextAreaElement>('.text-capture');
@@ -206,7 +282,7 @@ test('does not refocus the text capture on every typed key', async ({ page }) =>
 });
 
 test('keeps up with a fast burst of typed text', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(260, 300);
 
   await page.evaluate(() => {
@@ -225,7 +301,7 @@ test('keeps up with a fast burst of typed text', async ({ page }) => {
 });
 
 test('backspace returns the caret to the deleted glyph start', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(300, 300);
 
   await page.keyboard.press('L');
@@ -243,7 +319,7 @@ test('backspace returns the caret to the deleted glyph start', async ({ page }) 
 });
 
 test('can double-click to move the active typing cursor before spacing and release', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(260, 300);
   await page.keyboard.press('A');
   const first = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
@@ -269,7 +345,7 @@ test('can double-click to move the active typing cursor before spacing and relea
 });
 
 test('releases typed glyphs into physics when Enter is pressed', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(300, 240);
   await page.keyboard.press('L');
 
@@ -302,7 +378,7 @@ test('releases typed glyphs into physics when Enter is pressed', async ({ page }
 });
 
 test('moves the typing cursor with keys, supports mixed sizes, and selects all text', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(420, 300);
   const initial = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
 
@@ -345,7 +421,7 @@ test('moves the typing cursor with keys, supports mixed sizes, and selects all t
 });
 
 test('lets falling glyphs physically disturb earlier glyphs', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await setGlyphSize(page, 100);
   await page.mouse.click(560, 610);
   await page.keyboard.press('O');
@@ -368,7 +444,7 @@ test('lets falling glyphs physically disturb earlier glyphs', async ({ page }) =
 });
 
 test('can summon and release letters after the vehicle has started', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.getByRole('button', { name: 'Start' }).click();
   await page.evaluate(() => window.advanceTime(80));
   await page.mouse.click(520, 250);
@@ -388,7 +464,7 @@ test('can summon and release letters after the vehicle has started', async ({ pa
 });
 
 test('supports visible Start, Undo, and Reset controls', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await expect(page.locator('button', { hasText: 'Next Stage' })).toBeHidden();
 
   await page.mouse.click(360, 360);
@@ -467,7 +543,7 @@ test('stops the vehicle and locks gameplay after the 15 second timer', async ({ 
 
 test('keeps toolbar controls inside a compact viewport', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
-  await page.goto('/');
+  await openGame(page);
 
   const toolbarBox = await page.locator('.game-ui').boundingBox();
   expect(toolbarBox).not.toBeNull();
@@ -642,7 +718,7 @@ test('fails when the vehicle falls into a canyon drop', async ({ page }) => {
 });
 
 test('gameplay screenshot is nonblank after glyph creation', async ({ page }) => {
-  await page.goto('/');
+  await openGame(page);
   await page.mouse.click(420, 340);
   await page.keyboard.press('O');
   await page.evaluate(() => window.advanceTime(500));

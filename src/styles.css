@@ -150,8 +150,258 @@ canvas {
   outline: none;
 }
 
+.tutorial-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  color: #f8fbff;
+  background:
+    linear-gradient(180deg, rgba(18, 29, 48, 0.78), rgba(18, 29, 48, 0.5)),
+    rgba(20, 32, 52, 0.38);
+  backdrop-filter: blur(5px);
+}
+
+.tutorial-overlay[hidden] {
+  display: none;
+}
+
+.tutorial-content {
+  width: min(920px, 100%);
+}
+
+.tutorial-shot {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.92fr) minmax(300px, 1.35fr);
+  gap: 22px;
+  min-height: min(540px, calc(100vh - 146px));
+  padding: 30px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(214, 235, 255, 0.94) 0 46%, rgba(203, 224, 247, 0.9) 46% 68%, rgba(126, 194, 145, 0.95) 68% 100%);
+  box-shadow: 0 24px 80px rgba(8, 19, 36, 0.38);
+}
+
+.tutorial-shot-controls {
+  background:
+    radial-gradient(ellipse at 22% 20%, rgba(255, 255, 255, 0.72) 0 14%, transparent 15%),
+    radial-gradient(ellipse at 78% 18%, rgba(255, 255, 255, 0.66) 0 16%, transparent 17%),
+    linear-gradient(180deg, #cfe6fb 0 48%, #d8dff0 48% 68%, #91c99f 68% 100%);
+}
+
+.tutorial-shot-rules {
+  background:
+    radial-gradient(ellipse at 76% 18%, rgba(255, 255, 255, 0.7) 0 17%, transparent 18%),
+    linear-gradient(180deg, #d6ecff 0 50%, #dfe5f5 50% 70%, #8fc89b 70% 100%);
+}
+
+.tutorial-copy {
+  align-self: start;
+  color: #213047;
+}
+
+.tutorial-kicker {
+  margin: 0 0 10px;
+  color: #f05b7c;
+  font: 900 13px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+.tutorial-copy h1 {
+  margin: 0 0 14px;
+  color: #243554;
+  font: 900 44px/0.98 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  text-shadow: 0 3px 0 rgba(255, 255, 255, 0.85);
+}
+
+.tutorial-copy p:last-child {
+  max-width: 340px;
+  margin: 0;
+  color: #314666;
+  font: 700 18px/1.35 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.keyboard-map {
+  align-self: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
+  gap: 10px;
+}
+
+.key {
+  display: grid;
+  place-items: center;
+  min-height: 86px;
+  padding: 10px 8px;
+  border: 2px solid rgba(36, 53, 84, 0.46);
+  border-radius: 7px;
+  color: #243554;
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: 0 8px 0 rgba(36, 53, 84, 0.16);
+  text-align: center;
+  font: 900 17px/1.1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.key small {
+  color: #546987;
+  font: 800 12px/1.2 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.tutorial-notes {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-self: end;
+}
+
+.tutorial-notes span {
+  min-height: 44px;
+  padding: 10px 12px;
+  border-left: 4px solid #ffd94a;
+  border-radius: 6px;
+  color: #213047;
+  background: rgba(255, 255, 255, 0.68);
+  font: 800 14px/1.25 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.rules-diagram {
+  position: relative;
+  align-self: center;
+  min-height: 260px;
+}
+
+.diagram-ramp {
+  position: absolute;
+  left: 4%;
+  bottom: 46px;
+  display: grid;
+  place-items: center;
+  width: 58%;
+  height: 46px;
+  color: #243554;
+  background: rgba(255, 255, 255, 0.84);
+  border: 2px solid rgba(36, 53, 84, 0.34);
+  border-radius: 5px;
+  transform: rotate(-18deg);
+  transform-origin: left bottom;
+  font: 900 16px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.diagram-car {
+  position: absolute;
+  left: 13%;
+  bottom: 52px;
+  width: 86px;
+  height: 32px;
+  border-radius: 18px 28px 8px 8px;
+  background: #ff5d7d;
+  box-shadow:
+    16px -14px 0 -6px #ffe071,
+    16px 28px 0 -18px #223047,
+    60px 28px 0 -18px #223047;
+  transform: rotate(-18deg);
+}
+
+.diagram-rainbow {
+  position: absolute;
+  right: 2%;
+  top: 14px;
+  width: 250px;
+  height: 136px;
+  border-radius: 250px 250px 0 0;
+  background:
+    radial-gradient(ellipse at bottom, transparent 0 44%, #7f68ff 45% 49%, #57aefc 50% 54%, #57cf85 55% 59%, #ffd94a 60% 64%, #ff8a4d 65% 69%, #f05b7c 70% 74%, transparent 75%);
+}
+
+.tutorial-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  width: min(920px, 100%);
+  margin-top: 12px;
+}
+
+.tutorial-step-label {
+  min-width: 48px;
+  color: rgba(248, 251, 255, 0.78);
+  text-align: right;
+  font: 800 14px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.tutorial-next-button {
+  min-width: 124px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 6px;
+  color: #213047;
+  background: #ffe071;
+  cursor: pointer;
+  font: 900 14px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-shadow: 0 8px 22px rgba(8, 19, 36, 0.22);
+}
+
+.tutorial-next-button:hover,
+.tutorial-next-button:focus-visible {
+  border-color: #ffffff;
+  background: #ffffff;
+  outline: none;
+}
+
 @media (max-width: 420px) {
   .end-overlay-title {
     font-size: 26px;
+  }
+
+  .tutorial-overlay {
+    padding: 12px;
+  }
+
+  .tutorial-shot {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    min-height: calc(100vh - 112px);
+    padding: 18px;
+  }
+
+  .tutorial-copy h1 {
+    font-size: 34px;
+  }
+
+  .tutorial-copy p:last-child {
+    font-size: 15px;
+  }
+
+  .keyboard-map {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .key {
+    min-height: 66px;
+    font-size: 14px;
+  }
+
+  .tutorial-notes {
+    grid-template-columns: 1fr;
+  }
+
+  .tutorial-notes span {
+    min-height: 0;
+    font-size: 12px;
+  }
+
+  .rules-diagram {
+    min-height: 180px;
+  }
+
+  .diagram-rainbow {
+    width: 180px;
+    height: 98px;
   }
 }
